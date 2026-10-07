@@ -75,14 +75,28 @@ export const AdminAlertsManager: React.FC<Props> = ({ currentUser, onRefresh }) 
 
       const recipientsCount = calculateTargetCount();
 
+      const prefMap: Record<string, 'all' | 'activities' | 'admin' | 'finance' | 'general'> = {
+        REPORTS: 'activities',
+        METRICS: 'finance',
+        GENERAL: 'general',
+        SECURITY: 'admin',
+        ALL: 'all',
+      };
+      const engMap: Record<string, 'all' | 'high' | 'moderate' | 'at_risk'> = {
+        ALL: 'all',
+        HIGH: 'high',
+        MEDIUM: 'moderate',
+        LOW: 'at_risk',
+      };
+
       const newCampaign = await sqlDb.sendNotificationCampaign(
         {
           title: title.trim(),
           message: body.trim(),
           body: body.trim(),
           channels,
-          targetPreference,
-          targetEngagement,
+          targetPreference: prefMap[targetPreference] || 'all',
+          targetEngagement: engMap[targetEngagement] || 'all',
           scheduledTime: isScheduled ? scheduledTime : undefined,
           actionUrl: actionUrl.trim(),
           recipientsCount,

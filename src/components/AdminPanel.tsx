@@ -156,7 +156,7 @@ export const AdminPanel: React.FC<Props> = ({
   });
 
   // Analytics on logs
-  const totalLogins = auditLogs.filter((l) => l.action === 'AUTH_LOGIN').length;
+  const totalLogins = auditLogs.filter((l) => l.action === 'LOGIN').length;
   const totalUserEvents = auditLogs.filter((l) => l.action.startsWith('USER_')).length;
   const totalUpdates = auditLogs.filter((l) => l.action.includes('UPDATE')).length;
 
@@ -486,7 +486,7 @@ export const AdminPanel: React.FC<Props> = ({
                 </thead>
                 <tbody className="divide-y divide-gray-200 font-medium bg-white">
                   {filteredLogs.map((l) => {
-                    const isLogin = l.action === 'AUTH_LOGIN';
+                    const isLogin = l.action === 'LOGIN';
                     const isUserMgmt = l.action.startsWith('USER_');
                     const isExport = l.action.includes('EXPORT');
 
@@ -781,11 +781,11 @@ export const AdminPanel: React.FC<Props> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {sqlResult.rows.map((row, idx) => (
+                    {sqlResult.values.map((row, idx) => (
                       <tr key={idx} className="hover:bg-gray-50">
-                        {sqlResult.columns.map((c, colIdx) => (
+                        {row.map((val, colIdx) => (
                           <td key={colIdx} className="p-2 text-gray-800 font-mono">
-                            {typeof row[c] === 'object' ? JSON.stringify(row[c]) : String(row[c] ?? '')}
+                            {typeof val === 'object' ? JSON.stringify(val) : String(val ?? '')}
                           </td>
                         ))}
                       </tr>

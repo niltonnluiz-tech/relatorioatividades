@@ -56,8 +56,8 @@ export function App() {
 
   // Subscribe to offline sync changes
   useEffect(() => {
-    const unsub = offlineSync.subscribe((status) => {
-      setSyncStatus(status);
+    const unsub = offlineSync.subscribe((isOnline, pendingCount) => {
+      setSyncStatus({ isOnline, pendingCount, queue: offlineSync.getStatus().queue });
     });
     return unsub;
   }, []);

@@ -280,7 +280,7 @@ export const Navbar: React.FC<Props> = ({
               >
                 {availableUsers.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.name} ({u.role === 'admin' ? 'Admin' : u.departmentName.split(' ')[0]})
+                    {u.name} ({u.role === 'admin' ? 'Admin' : (u.departmentName?.split(' ')[0] || u.departmentId || 'Setor')})
                   </option>
                 ))}
               </select>
