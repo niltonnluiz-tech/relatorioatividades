@@ -1,0 +1,6 @@
+{
+  "name": "Relatório Gerencial CAMP Piero Pollone",
+  "description": "Sistema de gestão e lançamento de atividades mensais com geração de relatórios gerenciais idênticos ao modelo oficial em PDF e Excel, auditoria e controle de acessos.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
