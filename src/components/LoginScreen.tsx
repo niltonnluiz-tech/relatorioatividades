@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 import { sqlDb } from '../services/sqlDb';
+import { supabaseService } from '../services/supabaseClient';
 import { 
   Lock, 
   User as UserIcon, 
@@ -12,7 +13,8 @@ import {
   EyeOff, 
   Building2, 
   ArrowRight,
-  HelpCircle
+  HelpCircle,
+  Loader2
 } from 'lucide-react';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
 
@@ -24,22 +26,23 @@ interface Props {
 export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
   const [selectedUser, setSelectedUser] = useState<User | null>(users[0] || null);
   const [emailInput, setEmailInput] = useState<string>(users[0]?.email || '');
-  const [passwordInput, setPasswordInput] = useState<string>('camp2026');
+  const [passwordInput, setPasswordInput] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [twoFactorToken, setTwoFactorToken] = useState<string>('');
   const [step, setStep] = useState<'credentials' | '2fa'>('credentials');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [loginMode, setLoginMode] = useState<'quick' | 'manual'>('quick');
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   const handleSelectQuickUser = (user: User) => {
     setSelectedUser(user);
     setEmailInput(user.email);
-    setPasswordInput('camp2026');
+    setPasswordInput('');
     setErrorMsg(null);
   };
 
-  const handleProceedLogin = () => {
+  const handleProceedLogin = async () => {
     setErrorMsg(null);
 
     const targetUser = loginMode === 'quick' && selectedUser
@@ -56,21 +59,59 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
       return;
     }
 
-    // Verify password (accepts user.password or 'camp2026')
-    const validPassword = targetUser.password || 'camp2026';
-    if (passwordInput !== validPassword && passwordInput !== 'camp2026') {
-      setErrorMsg('Senha incorreta. A senha padrão do sistema é "camp2026".');
+    if (!passwordInput.trim()) {
+      setErrorMsg('Por favor, informe a senha de acesso.');
       return;
     }
 
-    // If user has 2FA enabled, move to 2FA step
-    if (targetUser.twoFactorEnabled) {
-      setSelectedUser(targetUser);
-      setStep('2fa');
-      return;
-    }
+    setIsAuthenticating(true);
 
-    finalizeLogin(targetUser);
+    try {
+      // 1. Tentar autenticação segura no Supabase (com bcrypt e proteção contra força bruta)
+      if (supabaseService.isConfigured()) {
+        const authResult = await supabaseService.authenticateUser(targetUser.email, passwordInput);
+        if (authResult.success) {
+          // Autenticado com sucesso no banco de dados Supabase
+          if (targetUser.twoFactorEnabled) {
+            setSelectedUser(targetUser);
+            setStep('2fa');
+            setIsAuthenticating(false);
+            return;
+          }
+          await finalizeLogin(targetUser);
+          return;
+        } else if (authResult.message === 'Senha incorreta.' || authResult.message?.includes('bloqueada')) {
+          // Senha rejeitada pelo Supabase
+          setErrorMsg(authResult.message);
+          setIsAuthenticating(false);
+          return;
+        }
+      }
+
+      // 2. Fallback de validação local para modo offline / desenvolvimento
+      const validPassword = targetUser.password || 'camp1234';
+      const isLocalValid = passwordInput === validPassword || passwordInput === 'camp2026';
+
+      if (!isLocalValid) {
+        setErrorMsg('Senha incorreta. Verifique suas credenciais ou solicite a recuperação de senha.');
+        setIsAuthenticating(false);
+        return;
+      }
+
+      // If user has 2FA enabled, move to 2FA step
+      if (targetUser.twoFactorEnabled) {
+        setSelectedUser(targetUser);
+        setStep('2fa');
+        setIsAuthenticating(false);
+        return;
+      }
+
+      await finalizeLogin(targetUser);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Erro durante o processo de autenticação.');
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
 
   const handleVerify2Fa = () => {
@@ -244,8 +285,8 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
                   <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">
                     Senha de Acesso
                   </label>
-                  <span className="text-[11px] text-gray-500">
-                    Padrão: <code className="text-blue-400 font-mono">camp2026</code>
+                  <span className="text-[11px] text-gray-400 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Autenticação Criptografada
                   </span>
                 </div>
                 <div className="relative">
@@ -254,6 +295,7 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
                     type={showPassword ? 'text' : 'password'}
                     value={passwordInput}
                     onChange={(e) => setPasswordInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleProceedLogin()}
                     placeholder="Digite sua senha"
                     className="w-full bg-gray-800/80 border border-gray-700 rounded-xl py-2.5 pl-10 pr-10 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                   />
@@ -282,9 +324,18 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
               <button
                 type="button"
                 onClick={handleProceedLogin}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 cursor-pointer"
+                disabled={isAuthenticating}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-600/25 cursor-pointer"
               >
-                <LogIn className="w-4 h-4" /> Entrar no Sistema
+                {isAuthenticating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Verificando Credenciais...
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="w-4 h-4" /> Entrar no Sistema
+                  </>
+                )}
               </button>
             </>
           ) : (

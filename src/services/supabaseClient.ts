@@ -198,6 +198,162 @@ class SupabaseService {
   }
 
   /**
+   * Authenticates user securely via Supabase RPC with bcrypt and rate limiting
+   */
+  public async authenticateUser(identifier: string, password: string): Promise<{
+    success: boolean;
+    user?: any;
+    message?: string;
+  }> {
+    const client = this.getClient();
+    if (!client) {
+      return { success: false, message: 'Supabase não conectado.' };
+    }
+
+    try {
+      const { data, error } = await client.rpc('rpc_authenticate_user', {
+        p_identifier: identifier.trim(),
+        p_password: password,
+      });
+
+      if (error) {
+        return { success: false, message: error.message };
+      }
+
+      if (data && data.success) {
+        return { success: true, user: data.user };
+      }
+
+      return {
+        success: false,
+        message: data?.message || 'Credenciais inválidas.',
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'Falha ao autenticar no servidor.',
+      };
+    }
+  }
+
+  /**
+   * Changes current user's password securely via Supabase RPC
+   */
+  public async changeOwnPassword(userId: string, currentPass: string, newPass: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const client = this.getClient();
+    if (!client) {
+      return { success: false, message: 'Supabase não conectado.' };
+    }
+
+    try {
+      const { data, error } = await client.rpc('rpc_change_own_password', {
+        p_user_id: userId,
+        p_current_password: currentPass,
+        p_new_password: newPass,
+      });
+
+      if (error) return { success: false, message: error.message };
+      return {
+        success: Boolean(data?.success),
+        message: data?.message || (data?.success ? 'Senha alterada com sucesso!' : 'Falha ao alterar senha.'),
+      };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Erro ao alterar senha no Supabase.' };
+    }
+  }
+
+  /**
+   * Requests password reset code via Supabase RPC
+   */
+  public async requestPasswordReset(identifier: string, method: 'email' | 'phone'): Promise<{
+    success: boolean;
+    message: string;
+    debugCode?: string;
+  }> {
+    const client = this.getClient();
+    if (!client) {
+      return { success: false, message: 'Supabase não conectado.' };
+    }
+
+    try {
+      const { data, error } = await client.rpc('rpc_request_password_reset', {
+        p_identifier: identifier.trim(),
+        p_method: method,
+      });
+
+      if (error) return { success: false, message: error.message };
+      return {
+        success: Boolean(data?.success),
+        message: data?.message || 'Código de verificação gerado.',
+        debugCode: data?.debug_code,
+      };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Erro ao solicitar recuperação.' };
+    }
+  }
+
+  /**
+   * Verifies reset code and updates password via Supabase RPC
+   */
+  public async verifyAndResetPassword(identifier: string, code: string, newPassword: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const client = this.getClient();
+    if (!client) {
+      return { success: false, message: 'Supabase não conectado.' };
+    }
+
+    try {
+      const { data, error } = await client.rpc('rpc_verify_and_reset_password', {
+        p_identifier: identifier.trim(),
+        p_code: code.trim(),
+        p_new_password: newPassword,
+      });
+
+      if (error) return { success: false, message: error.message };
+      return {
+        success: Boolean(data?.success),
+        message: data?.message || 'Senha redefinida com sucesso!',
+      };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Erro ao redefinir senha no Supabase.' };
+    }
+  }
+
+  /**
+   * Admin resets user password via Supabase RPC
+   */
+  public async adminResetUserPassword(adminUserId: string, targetUserId: string, newPassword: string): Promise<{
+    success: boolean;
+    message: string;
+  }> {
+    const client = this.getClient();
+    if (!client) {
+      return { success: false, message: 'Supabase não conectado.' };
+    }
+
+    try {
+      const { data, error } = await client.rpc('rpc_admin_reset_user_password', {
+        p_admin_user_id: adminUserId,
+        p_target_user_id: targetUserId,
+        p_new_password: newPassword,
+      });
+
+      if (error) return { success: false, message: error.message };
+      return {
+        success: Boolean(data?.success),
+        message: data?.message || 'Senha alterada com sucesso!',
+      };
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Erro ao redefinir senha no Supabase.' };
+    }
+  }
+
+  /**
    * Pushes local database state to Supabase (Instituição, Usuários, Relatório e Logs de Auditoria)
    */
   public async pushLocalDataToSupabase(): Promise<{

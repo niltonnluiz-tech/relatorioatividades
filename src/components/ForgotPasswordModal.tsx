@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { sqlDb } from '../services/sqlDb';
+import { supabaseService } from '../services/supabaseClient';
 import { 
   X, 
   Mail, 
@@ -156,6 +157,14 @@ export const ForgotPasswordModal: React.FC<Props> = ({
 
     setLoading(true);
     try {
+      if (supabaseService.isConfigured()) {
+        await supabaseService.verifyAndResetPassword(
+          matchedUser.email,
+          verificationCode || generatedCode || '123456',
+          newPassword
+        ).catch(() => {});
+      }
+
       const updated = await sqlDb.resetPasswordWithCode(
         matchedUser.id,
         verificationCode || generatedCode || '123456',

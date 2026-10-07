@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User, UserPermissions, DepartmentId } from '../types';
 import { sqlDb } from '../services/sqlDb';
+import { supabaseService } from '../services/supabaseClient';
 import { getSortedSectors, OFFICIAL_SECTORS } from '../constants/sectors';
 import { 
   X, 
@@ -101,6 +102,14 @@ export const EditUserModal: React.FC<Props> = ({
         },
         currentUser
       );
+
+      if (adminPasswordInput.trim() && supabaseService.isConfigured()) {
+        await supabaseService.adminResetUserPassword(
+          currentUser.id,
+          user.id,
+          adminPasswordInput.trim()
+        ).catch(() => {});
+      }
 
       onSaved(updated);
     } catch (err: any) {

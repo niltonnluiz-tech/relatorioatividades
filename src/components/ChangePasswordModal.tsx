@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { User } from '../types';
 import { sqlDb } from '../services/sqlDb';
+import { supabaseService } from '../services/supabaseClient';
 import { 
   X, 
   Lock, 
@@ -63,6 +64,19 @@ export const ChangePasswordModal: React.FC<Props> = ({
 
     setIsSaving(true);
     try {
+      if (supabaseService.isConfigured()) {
+        const supaRes = await supabaseService.changeOwnPassword(
+          currentUser.id,
+          currentPassword,
+          newPassword
+        );
+        if (!supaRes.success && supaRes.message.includes('incorreta')) {
+          setErrorMsg(supaRes.message);
+          setIsSaving(false);
+          return;
+        }
+      }
+
       const updated = await sqlDb.changeUserPassword(
         currentUser.id,
         currentPassword,
@@ -160,7 +174,7 @@ export const ChangePasswordModal: React.FC<Props> = ({
               </button>
             </div>
             <span className="text-[10px] text-gray-400 mt-1 block">
-              Dica: A senha padrão inicial do sistema é <code className="font-mono text-blue-600">camp2026</code>
+              Informe a senha atual cadastrada para validar a alteração com segurança.
             </span>
           </div>
 

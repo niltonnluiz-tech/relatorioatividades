@@ -6,6 +6,7 @@
 import React, { useState, useRef } from 'react';
 import { User } from '../types';
 import { sqlDb } from '../services/sqlDb';
+import { supabaseService } from '../services/supabaseClient';
 import { 
   User as UserIcon, 
   Mail, 
@@ -146,6 +147,19 @@ export const UserProfileModal: React.FC<Props> = ({
 
     setIsSaving(true);
     try {
+      if (supabaseService.isConfigured()) {
+        const supaRes = await supabaseService.changeOwnPassword(
+          currentUser.id,
+          currentPassword,
+          newPassword
+        );
+        if (!supaRes.success && supaRes.message.includes('incorreta')) {
+          setFeedback(supaRes.message);
+          setIsSaving(false);
+          return;
+        }
+      }
+
       const updated = await sqlDb.changeUserPassword(
         currentUser.id,
         currentPassword,
