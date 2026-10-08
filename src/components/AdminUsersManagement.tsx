@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { User, UserPermissions, DepartmentId } from '../types';
 import { sqlDb } from '../services/sqlDb';
 import { EditUserModal } from './EditUserModal';
+import { DepartmentPermissionsEditor } from './DepartmentPermissionsEditor';
 import { OFFICIAL_SECTORS, getSortedSectors, getSectorName } from '../constants/sectors';
+import { getDefaultPermissionsForUser } from '../utils/permissions';
 import { 
   Users, 
   UserPlus, 
@@ -42,20 +44,14 @@ export const AdminUsersManagement: React.FC<Props> = ({ currentUser, onRefresh }
   // New User Form State
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('camp2026');
+  const [newPassword, setNewPassword] = useState('');
   const [newPhone, setNewPhone] = useState('(11) 2842-2470');
   const [newPosition, setNewPosition] = useState('Coordenador(a)');
   const [newDepartment, setNewDepartment] = useState<DepartmentId>('rh');
   const [newRole, setNewRole] = useState<'admin' | 'coordinator' | 'staff'>('coordinator');
-  const [newPermissions, setNewPermissions] = useState<UserPermissions>({
-    canEditFinancials: false,
-    canExportPdf: true,
-    canExportExcel: true,
-    canManageUsers: false,
-    canViewAuditLogs: false,
-    canChangeReportStatus: false,
-    canManageSchedules: false,
-  });
+  const [newPermissions, setNewPermissions] = useState<UserPermissions>(() =>
+    getDefaultPermissionsForUser('coordinator', 'rh')
+  );
   // 2FA default: false (deactivated by default per requirements)
   const [newTwoFactorEnabled, setNewTwoFactorEnabled] = useState(false);
 
@@ -113,21 +109,13 @@ export const AdminUsersManagement: React.FC<Props> = ({ currentUser, onRefresh }
   const resetForm = () => {
     setNewName('');
     setNewEmail('');
-    setNewPassword('camp2026');
+    setNewPassword('');
     setNewPhone('(11) 2842-2470');
     setNewPosition('Coordenador(a)');
     setNewDepartment('rh');
     setNewRole('coordinator');
     setNewTwoFactorEnabled(false);
-    setNewPermissions({
-      canEditFinancials: false,
-      canExportPdf: true,
-      canExportExcel: true,
-      canManageUsers: false,
-      canViewAuditLogs: false,
-      canChangeReportStatus: false,
-      canManageSchedules: false,
-    });
+    setNewPermissions(getDefaultPermissionsForUser('coordinator', 'rh'));
   };
 
   const handleToggleStatus = async (targetUser: User) => {
@@ -640,6 +628,7 @@ export const AdminUsersManagement: React.FC<Props> = ({ currentUser, onRefresh }
                     type="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Defina a senha ou deixe em branco para 1º acesso"
                     className="w-full bg-gray-50 border border-gray-300 rounded-lg p-2.5 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -733,21 +722,21 @@ export const AdminUsersManagement: React.FC<Props> = ({ currentUser, onRefresh }
         />
       )}
 
-      {/* MODAL: Ajustar Acessos & 2FA */}
+      {/* MODAL: Ajustar Acessos, Departamentos & 2FA */}
       {editingPermissionsUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-200 animate-in fade-in zoom-in-95 duration-200">
-            <div className="bg-[#0B0F19] text-white p-5 flex items-center justify-between">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-gray-200 animate-in fade-in zoom-in-95 duration-200">
+            <div className="bg-[#0B0F19] text-white p-5 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 bg-blue-600/30 text-blue-400 rounded-lg">
                   <Shield className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="font-bold text-base leading-tight">
-                    Permissões de {editingPermissionsUser.name}
+                    Permissões de Acesso: {editingPermissionsUser.name}
                   </h3>
                   <p className="text-xs text-gray-400">
-                    Ajuste fino de acessos do setor {getSectorName(editingPermissionsUser.departmentId)}
+                    Setor base: <span className="text-blue-300 font-semibold">{getSectorName(editingPermissionsUser.departmentId)}</span> • Perfil: {editingPermissionsUser.role.toUpperCase()}
                   </p>
                 </div>
               </div>
@@ -759,9 +748,9 @@ export const AdminUsersManagement: React.FC<Props> = ({ currentUser, onRefresh }
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-6 overflow-y-auto space-y-4 flex-1">
               {/* 2FA Toggle inside Permissions Modal */}
-              <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl mb-3">
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-xl">
                 <label className="flex items-center justify-between cursor-pointer">
                   <div className="flex items-center gap-2">
                     <Lock className={`w-4 h-4 ${editingPermissionsUser.twoFactorEnabled ? 'text-indigo-600' : 'text-gray-400'}`} />
@@ -786,111 +775,56 @@ export const AdminUsersManagement: React.FC<Props> = ({ currentUser, onRefresh }
                 </label>
               </div>
 
-              <div className="space-y-2">
-                {[
-                  {
-                    key: 'canEditFinancials',
-                    label: 'Lançamentos Financeiros (DRE / E2EE)',
-                    desc: 'Edição de valores do setor financeiro',
-                  },
-                  {
-                    key: 'canExportPdf',
-                    label: 'Exportar Relatório PDF Oficial',
-                    desc: 'Geração de PDF das 15 páginas',
-                  },
-                  {
-                    key: 'canExportExcel',
-                    label: 'Exportar Planilha Excel (.xlsx)',
-                    desc: 'Download da planilha multi-abas',
-                  },
-                  {
-                    key: 'canManageUsers',
-                    label: 'Gerenciar Usuários & Cadastros',
-                    desc: 'Criar, editar e excluir contas',
-                  },
-                  {
-                    key: 'canViewAuditLogs',
-                    label: 'Visualizar Logs de Auditoria LGPD',
-                    desc: 'Acesso à trilha de integridade SHA-256',
-                  },
-                  {
-                    key: 'canChangeReportStatus',
-                    label: 'Aprovar / Fechar Relatórios',
-                    desc: 'Alterar status de Aberto para Fechado',
-                  },
-                  {
-                    key: 'canManageSchedules',
-                    label: 'Configurar Agendamentos & Cron',
-                    desc: 'Disparos automáticos e rotinas',
-                  },
-                ].map((perm) => (
-                  <label
-                    key={perm.key}
-                    className="flex items-start gap-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-xl cursor-pointer transition-colors border border-gray-200"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={!!editingPermissionsUser.permissions?.[perm.key as keyof UserPermissions]}
-                      onChange={(e) => {
-                        const cur = editingPermissionsUser.permissions || {};
-                        setEditingPermissionsUser({
-                          ...editingPermissionsUser,
-                          permissions: {
-                            ...cur,
-                            [perm.key]: e.target.checked,
-                          },
-                        });
-                      }}
-                      className="mt-0.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    <div>
-                      <span className="text-xs font-bold text-gray-900 block">
-                        {perm.label}
-                      </span>
-                      <span className="text-[11px] text-gray-500 block">
-                        {perm.desc}
-                      </span>
-                    </div>
-                  </label>
-                ))}
-              </div>
+              {/* Editor Granular de Permissões: Relatório, Downloads, Sigilo Financeiro e Departamentos */}
+              <DepartmentPermissionsEditor
+                permissions={editingPermissionsUser.permissions || {}}
+                onChange={(updated) =>
+                  setEditingPermissionsUser({
+                    ...editingPermissionsUser,
+                    permissions: updated,
+                  })
+                }
+                userDepartmentId={editingPermissionsUser.departmentId}
+                userName={editingPermissionsUser.name}
+                userRole={editingPermissionsUser.role}
+              />
+            </div>
 
-              <div className="pt-4 flex items-center justify-between border-t border-gray-200">
+            <div className="p-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const u = editingPermissionsUser;
+                  setEditingPermissionsUser(null);
+                  setEditingUser(u);
+                }}
+                className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Editar Dados Cadastrais Completos</span>
+              </button>
+
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    const u = editingPermissionsUser;
-                    setEditingPermissionsUser(null);
-                    setEditingUser(u);
-                  }}
-                  className="text-xs font-bold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
+                  onClick={() => setEditingPermissionsUser(null)}
+                  className="px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-200 rounded-lg transition-colors cursor-pointer"
                 >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  <span>Editar Todos os Dados</span>
+                  Cancelar
                 </button>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditingPermissionsUser(null)}
-                    className="px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleSavePermissions(
-                        editingPermissionsUser.id,
-                        editingPermissionsUser.permissions || {},
-                        editingPermissionsUser.twoFactorEnabled
-                      )
-                    }
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    Salvar Permissões
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleSavePermissions(
+                      editingPermissionsUser.id,
+                      editingPermissionsUser.permissions || {},
+                      editingPermissionsUser.twoFactorEnabled
+                    )
+                  }
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-sm"
+                >
+                  Salvar Permissões do Usuário
+                </button>
               </div>
             </div>
           </div>

@@ -472,9 +472,6 @@ export const UserProfileModal: React.FC<Props> = ({
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <span className="text-[10px] text-gray-400 mt-1 block">
-                Padrão inicial do sistema: <code className="text-blue-600 font-mono">camp2026</code>
-              </span>
             </div>
 
             <div>

@@ -68,23 +68,12 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
 
     try {
       const cleanPass = passwordInput.trim();
-      const isKnownDefault = cleanPass === 'camp2026' || cleanPass === 'camp1234';
 
-      // 1. Tentar autenticação segura no Supabase (com bcrypt)
+      // 1. Tentar autenticação segura no Supabase (com bcrypt) se configurado
       if (supabaseService.isConfigured()) {
         try {
           const authResult = await supabaseService.authenticateUser(targetUser.email, cleanPass);
           if (authResult.success) {
-            if (targetUser.twoFactorEnabled) {
-              setSelectedUser(targetUser);
-              setStep('2fa');
-              setIsAuthenticating(false);
-              return;
-            }
-            await finalizeLogin(targetUser);
-            return;
-          } else if (isKnownDefault) {
-            // Aceita senha padrão e prossegue
             if (targetUser.twoFactorEnabled) {
               setSelectedUser(targetUser);
               setStep('2fa');
@@ -103,17 +92,29 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
         }
       }
 
-      // 2. Validação local (aceita senha do usuário ou senhas padrão)
-      const validPassword = targetUser.password || 'camp2026';
-      const isLocalValid = cleanPass === validPassword || cleanPass === 'camp2026' || cleanPass === 'camp1234';
-
-      if (!isLocalValid) {
-        setErrorMsg('Senha incorreta. Verifique suas credenciais ou utilize a recuperação de senha.');
-        setIsAuthenticating(false);
-        return;
+      // 2. Validação local sem senhas padrão fixas
+      if (targetUser.password) {
+        if (cleanPass !== targetUser.password) {
+          setErrorMsg('Senha incorreta. Verifique suas credenciais ou utilize a recuperação de senha.');
+          setIsAuthenticating(false);
+          return;
+        }
+      } else {
+        // Primeiro acesso do usuário: a senha digitada é registrada como sua senha de acesso
+        targetUser.password = cleanPass;
+        sqlDb.persistUsers();
+        await sqlDb.addAuditLog({
+          userId: targetUser.id,
+          userName: targetUser.name,
+          departmentId: targetUser.departmentId,
+          action: 'PASSWORD_CHANGE',
+          details: `Senha de acesso inicial definida pelo próprio usuário (${targetUser.name}) no primeiro acesso.`,
+          ipAddress: '192.168.1.100 (Primeiro Acesso)',
+          userAgent: navigator.userAgent,
+        });
       }
 
-      // If user has 2FA enabled, move to 2FA step
+      // Se o usuário possui 2FA ativado, prossegue para o segundo fator
       if (targetUser.twoFactorEnabled) {
         setSelectedUser(targetUser);
         setStep('2fa');

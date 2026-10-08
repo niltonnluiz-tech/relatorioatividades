@@ -21,8 +21,12 @@ import {
   Sparkles,
   ShieldCheck,
   CheckCircle2,
-  Building
+  Building,
+  Lock,
+  EyeOff,
+  ShieldAlert
 } from 'lucide-react';
+import { canUserViewFinancials } from '../utils/permissions';
 
 interface Props {
   report: MonthlyReport;
@@ -716,8 +720,8 @@ export const ReportPagePreview: React.FC<Props> = ({
             <div className="border border-gray-300 rounded-lg overflow-hidden">
               <div className="bg-[#0B0F19] text-white px-3 py-1.5 flex items-center justify-between text-xs font-semibold">
                 <span>Despesas (Colaboradores e Aprendizes)</span>
-                <span className="bg-emerald-600/40 text-emerald-200 text-[10px] px-2 py-0.5 rounded">
-                  🔒 Criptografado E2EE
+                <span className="bg-emerald-600/40 text-emerald-200 text-[10px] px-2 py-0.5 rounded flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Criptografado E2EE
                 </span>
               </div>
               <table className="w-full text-xs md:text-sm">
@@ -728,12 +732,24 @@ export const ReportPagePreview: React.FC<Props> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {(rh.subMetrics?.[0]?.items || []).map((m) => (
-                    <tr key={m.id} className="hover:bg-gray-50">
-                      <td className="p-2 font-medium text-gray-900">{m.label}</td>
-                      <td className="p-2 text-right font-mono font-bold text-gray-900">{m.value}</td>
-                    </tr>
-                  ))}
+                  {(rh.subMetrics?.[0]?.items || []).map((m) => {
+                    const hasFinancePerm = canUserViewFinancials(currentUser);
+                    return (
+                      <tr key={m.id} className="hover:bg-gray-50">
+                        <td className="p-2 font-medium text-gray-900">{m.label}</td>
+                        <td className="p-2 text-right font-mono font-bold text-gray-900">
+                          {hasFinancePerm ? (
+                            m.value
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-gray-500 font-sans text-xs bg-gray-100 px-2 py-0.5 rounded">
+                              <Lock className="w-3 h-3 text-amber-600" />
+                              <span>•••••• (Sigilo)</span>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -745,6 +761,8 @@ export const ReportPagePreview: React.FC<Props> = ({
       // ----------------------------------------------------
       case 4:
         const fin = report.departments.financeiro;
+        const hasFinancialAccess = canUserViewFinancials(currentUser);
+
         return (
           <div>
             {renderHeader('Financeiro')}
@@ -756,11 +774,33 @@ export const ReportPagePreview: React.FC<Props> = ({
               fin.coordinatorAvatar
             )}
 
+            {/* Aviso de Sigilo Financeiro se usuário não tiver permissão */}
+            {!hasFinancialAccess && (
+              <div className="mb-5 bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3 shadow-xs">
+                <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wide flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-amber-600" /> Dados e Valores Financeiros Confidenciais
+                  </h4>
+                  <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                    Os demonstrativos de receitas, despesas, faturamento e inadimplência deste relatório são restritos à Diretoria Executiva e usuários expressamente autorizados pelo Administrador. Os valores numéricos foram ocultados para o seu perfil.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="border border-gray-300 rounded-lg overflow-hidden mb-6">
               <div className="bg-[#0B0F19] text-white px-3 py-1.5 flex items-center justify-between text-xs font-semibold">
-                <span>Registros Financeiros Oficiais</span>
-                <span className="bg-emerald-600/40 text-emerald-200 text-[10px] px-2 py-0.5 rounded">
-                  🔒 Criptografia AES-256-GCM
+                <span className="flex items-center gap-1.5">
+                  Registros Financeiros Oficiais
+                  {!hasFinancialAccess && (
+                    <span className="bg-amber-500/30 text-amber-200 text-[10px] px-2 py-0.2 rounded font-normal">
+                      Acesso Restrito
+                    </span>
+                  )}
+                </span>
+                <span className="bg-emerald-600/40 text-emerald-200 text-[10px] px-2 py-0.5 rounded flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> Criptografia AES-256-GCM
                 </span>
               </div>
               <table className="w-full text-xs md:text-sm">
@@ -774,7 +814,16 @@ export const ReportPagePreview: React.FC<Props> = ({
                   {fin.metrics.map((m) => (
                     <tr key={m.id} className="hover:bg-gray-50">
                       <td className="p-3 font-medium text-gray-900">{m.label}</td>
-                      <td className="p-3 text-right font-mono font-bold text-gray-900">{m.value}</td>
+                      <td className="p-3 text-right font-mono font-bold text-gray-900">
+                        {hasFinancialAccess ? (
+                          m.value
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 font-sans bg-gray-100 px-2.5 py-1 rounded-md">
+                            <Lock className="w-3.5 h-3.5 text-amber-600" />
+                            <span>•••••••• (Confidencial)</span>
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -783,7 +832,9 @@ export const ReportPagePreview: React.FC<Props> = ({
 
             <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
               <p className="font-bold text-gray-900">
-                {fin.customNotes || 'Inadimplentes: sem ocorrências.'}
+                {hasFinancialAccess
+                  ? (fin.customNotes || 'Inadimplentes: sem ocorrências.')
+                  : 'Inadimplência e notas financeiras: Dados confidenciais reservados.'}
               </p>
             </div>
           </div>

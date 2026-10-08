@@ -4,10 +4,16 @@
  * financial figures, activities, and LGPD audit logs.
  */
 import * as XLSX from 'xlsx';
-import { MonthlyReport, AuditLog } from '../types';
+import { MonthlyReport, AuditLog, User } from '../types';
+import { canUserViewFinancials } from '../utils/permissions';
 
-export function generateMonthlyExcel(report: MonthlyReport, auditLogs: AuditLog[] = []): void {
+export function generateMonthlyExcel(
+  report: MonthlyReport, 
+  auditLogs: AuditLog[] = [], 
+  requestingUser?: User
+): void {
   const wb = XLSX.utils.book_new();
+  const canSeeFinancials = requestingUser ? canUserViewFinancials(requestingUser) : true;
 
   // 1. Sheet: Resumo Institucional
   const summaryData = [
@@ -54,8 +60,11 @@ export function generateMonthlyExcel(report: MonthlyReport, auditLogs: AuditLog[
     ['Indicador de Pessoal', 'Quantidade'],
     ...rhDept.metrics.map((m) => [m.label, m.value]),
     ['', ''],
-    ['DESPESAS DE PESSOAL (Confidencial)', 'Valor R$'],
-    ...(rhDept.subMetrics?.[0]?.items || []).map((m) => [m.label, m.value]),
+    ['DESPESAS DE PESSOAL (Confidencial)', canSeeFinancials ? 'Valor R$' : 'Valor R$ (Confidencial)'],
+    ...(rhDept.subMetrics?.[0]?.items || []).map((m) => [
+      m.label, 
+      canSeeFinancials ? m.value : '[CONFIDENCIAL]'
+    ]),
   ];
   const wsRh = XLSX.utils.aoa_to_sheet(rhData);
   XLSX.utils.book_append_sheet(wb, wsRh, 'Gestão de Pessoas RH');
@@ -65,10 +74,13 @@ export function generateMonthlyExcel(report: MonthlyReport, auditLogs: AuditLog[
   const finData = [
     ['DEPARTAMENTO FINANCEIRO', ''],
     ['Coordenadora:', `${finDept.coordinatorName} (${finDept.coordinatorPhone})`],
-    ['Situação de Inadimplência:', finDept.customNotes || 'Inadimplentes: sem ocorrências.'],
+    ['Situação de Inadimplência:', canSeeFinancials ? (finDept.customNotes || 'Inadimplentes: sem ocorrências.') : '[CONFIDENCIAL / ACESSO RESTRITO]'],
     ['', ''],
-    ['Categoria', 'Valor R$'],
-    ...finDept.metrics.map((m) => [m.label, m.value]),
+    ['Categoria', canSeeFinancials ? 'Valor R$' : 'Valor R$ (Acesso Restrito)'],
+    ...finDept.metrics.map((m) => [
+      m.label, 
+      canSeeFinancials ? m.value : '[CONFIDENCIAL / ACESSO RESTRITO]'
+    ]),
   ];
   const wsFin = XLSX.utils.aoa_to_sheet(finData);
   XLSX.utils.book_append_sheet(wb, wsFin, 'Financeiro');

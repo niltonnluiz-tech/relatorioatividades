@@ -4,7 +4,8 @@
  */
 import React from 'react';
 import { User } from '../types';
-import { UserCheck, Eye, ShieldCheck, FileDown, User as UserIcon } from 'lucide-react';
+import { UserCheck, Eye, ShieldCheck, FileDown, User as UserIcon, Lock } from 'lucide-react';
+import { canUserAccessReport, canUserExportPdf } from '../utils/permissions';
 
 interface Props {
   currentUser: User;
@@ -21,6 +22,9 @@ export const MobileBottomNav: React.FC<Props> = ({
   onOpenPdfViewer,
   onOpenProfile,
 }) => {
+  const canAccessReport = canUserAccessReport(currentUser);
+  const canExportPdf = canUserExportPdf(currentUser);
+
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-200 px-2 py-1.5 flex items-center justify-around shadow-lg">
       <button
@@ -39,7 +43,7 @@ export const MobileBottomNav: React.FC<Props> = ({
           activeView === 'preview' ? 'text-blue-600' : 'text-gray-500'
         }`}
       >
-        <Eye className="w-4 h-4" />
+        {canAccessReport ? <Eye className="w-4 h-4" /> : <Lock className="w-4 h-4 text-amber-500" />}
         <span>Relatório</span>
       </button>
 
@@ -66,10 +70,18 @@ export const MobileBottomNav: React.FC<Props> = ({
       )}
 
       <button
-        onClick={onOpenPdfViewer}
-        className="flex flex-col items-center gap-0.5 text-[10px] font-bold text-red-600"
+        onClick={() => {
+          if (!canExportPdf) {
+            alert('Acesso Negado: Seu usuário não possui autorização da Administração para baixar o relatório oficial em PDF.');
+            return;
+          }
+          onOpenPdfViewer();
+        }}
+        className={`flex flex-col items-center gap-0.5 text-[10px] font-bold ${
+          canExportPdf ? 'text-red-600' : 'text-gray-400'
+        }`}
       >
-        <FileDown className="w-4 h-4" />
+        {canExportPdf ? <FileDown className="w-4 h-4" /> : <Lock className="w-4 h-4 text-gray-400" />}
         <span>PDF</span>
       </button>
     </div>

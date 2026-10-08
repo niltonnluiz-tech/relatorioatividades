@@ -15,6 +15,7 @@ import {
   NotificationMetricsSummary,
 } from '../types';
 import { INITIAL_MONTHLY_REPORT, INITIAL_USERS } from '../data/initialData';
+import { getDefaultPermissionsForUser } from '../utils/permissions';
 import { calculateAuditHash } from './crypto';
 
 const DB_STORAGE_KEY = 'CAMP_SQLITE_DB_SNAPSHOT_V1';
@@ -147,18 +148,37 @@ class SqlDatabaseService {
     }
 
     // Ensure any legacy 'admin' or 'Administração' department is migrated to 'ti' / 'Tecnologia (TI)'
+    // and ensure all users have department & report permissions properly populated
     let usersMigrated = false;
     this.users = this.users.map((u) => {
+      let updatedUser = { ...u };
       if (u.departmentId === 'admin' || (u.departmentName && u.departmentName.includes('Administração &'))) {
         usersMigrated = true;
-        return {
-          ...u,
+        updatedUser = {
+          ...updatedUser,
           departmentId: 'ti',
           departmentName: 'Tecnologia (TI)',
           position: u.role === 'admin' ? 'Administrador do Sistema / TI' : (u.position || 'Coordenador(a) de Tecnologia (TI)'),
         };
       }
-      return u;
+      // Remove any legacy default passwords ('camp2026' or 'camp1234')
+      if (updatedUser.password === 'camp2026' || updatedUser.password === 'camp1234') {
+        usersMigrated = true;
+        delete updatedUser.password;
+      }
+      if (!updatedUser.permissions || !updatedUser.permissions.departments) {
+        usersMigrated = true;
+        const defaults = getDefaultPermissionsForUser(updatedUser.role, updatedUser.departmentId);
+        updatedUser.permissions = {
+          ...defaults,
+          ...(updatedUser.permissions || {}),
+          departments: {
+            ...defaults.departments,
+            ...(updatedUser.permissions?.departments || {}),
+          },
+        };
+      }
+      return updatedUser;
     });
     if (usersMigrated) {
       this.persistUsers();
@@ -645,34 +665,14 @@ class SqlDatabaseService {
   ): Promise<User> {
     this.init();
     const id = `user_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const defaultPermissions: UserPermissions = userData.permissions || (
-      userData.role === 'admin'
-        ? {
-            canEditFinancials: true,
-            canExportPdf: true,
-            canExportExcel: true,
-            canManageUsers: true,
-            canViewAuditLogs: true,
-            canChangeReportStatus: true,
-            canManageSchedules: true,
-          }
-        : {
-            canEditFinancials: userData.departmentId === 'financeiro',
-            canExportPdf: true,
-            canExportExcel: true,
-            canManageUsers: false,
-            canViewAuditLogs: false,
-            canChangeReportStatus: false,
-            canManageSchedules: false,
-          }
-    );
+    const defaultPermissions: UserPermissions = userData.permissions || getDefaultPermissionsForUser(userData.role, userData.departmentId);
 
     const newUser: User = {
       ...userData,
       id,
       active: userData.active !== undefined ? userData.active : true,
       permissions: defaultPermissions,
-      password: userData.password || 'camp2026',
+      password: userData.password ? userData.password.trim() : undefined,
       avatarUrl: userData.avatarUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
       twoFactorEnabled: userData.twoFactorEnabled || false,
       lgpdConsentGiven: true,
@@ -888,8 +888,7 @@ class SqlDatabaseService {
       throw new Error('Usuário não encontrado.');
     }
 
-    const expectedPass = user.password || 'camp2026';
-    if (currentPassword !== expectedPass && currentPassword !== 'camp2026') {
+    if (user.password && currentPassword !== user.password) {
       throw new Error('A senha atual informada está incorreta.');
     }
 

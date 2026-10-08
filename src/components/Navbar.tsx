@@ -18,9 +18,11 @@ import {
   ChevronDown,
   LogOut,
   KeyRound,
-  Database
+  Database,
+  Lock
 } from 'lucide-react';
 import { supabaseService } from '../services/supabaseClient';
+import { canUserAccessReport, canUserExportPdf, canUserExportExcel } from '../utils/permissions';
 
 interface Props {
   currentUser: User;
@@ -63,6 +65,9 @@ export const Navbar: React.FC<Props> = ({
   onLogout,
 }) => {
   const institutionSettings = sqlDb.getInstitutionSettings();
+  const canAccessReport = canUserAccessReport(currentUser);
+  const canExportPdf = canUserExportPdf(currentUser);
+  const canExportExcel = canUserExportExcel(currentUser);
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-gray-200/90 shadow-2xs">
@@ -122,14 +127,22 @@ export const Navbar: React.FC<Props> = ({
 
             <button
               onClick={() => onChangeView('preview')}
+              title={canAccessReport ? "Visualizar Relatório Oficial (15 Páginas)" : "Acesso ao relatório restrito pela Administração"}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                 activeView === 'preview'
                   ? 'bg-white text-gray-900 shadow-xs border border-gray-200/80 font-black'
                   : 'text-gray-600 hover:text-gray-900 hover:bg-white/40'
               }`}
             >
-              <Eye className="w-3.5 h-3.5 text-indigo-600" />
+              {canAccessReport ? (
+                <Eye className="w-3.5 h-3.5 text-indigo-600" />
+              ) : (
+                <Lock className="w-3.5 h-3.5 text-amber-500" />
+              )}
               <span>Relatório (15 Páginas)</span>
+              {!canAccessReport && (
+                <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1 py-0.2 rounded">Restrito</span>
+              )}
             </button>
 
             {currentUser.role === 'admin' && (
@@ -191,22 +204,50 @@ export const Navbar: React.FC<Props> = ({
             {/* Quick Export PDF button */}
             <button
               id="btn-nav-pdf-export"
-              onClick={onOpenPdfViewer}
-              title="Visualizar e Baixar PDF Oficial"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0B0F19] hover:bg-black text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+              onClick={() => {
+                if (!canExportPdf) {
+                  alert('Acesso Negado: Seu usuário não possui autorização da Administração para baixar o relatório oficial em PDF.');
+                  return;
+                }
+                onOpenPdfViewer();
+              }}
+              title={canExportPdf ? "Visualizar e Baixar PDF Oficial" : "Download do PDF restrito pela Administração"}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer ${
+                canExportPdf
+                  ? 'bg-[#0B0F19] hover:bg-black text-white'
+                  : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+              }`}
             >
-              <FileText className="w-3.5 h-3.5 text-red-400" />
+              {canExportPdf ? (
+                <FileText className="w-3.5 h-3.5 text-red-400" />
+              ) : (
+                <Lock className="w-3.5 h-3.5 text-gray-500" />
+              )}
               <span className="hidden sm:inline">PDF Oficial</span>
             </button>
 
             {/* Quick Export Excel button */}
             <button
               id="btn-nav-excel-export"
-              onClick={onExportExcel}
-              title="Baixar Relatório em Formato Excel (.xlsx)"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+              onClick={() => {
+                if (!canExportExcel) {
+                  alert('Acesso Negado: Seu usuário não possui autorização da Administração para baixar a planilha consolidada em Excel.');
+                  return;
+                }
+                onExportExcel();
+              }}
+              title={canExportExcel ? "Baixar Relatório em Formato Excel (.xlsx)" : "Download da planilha Excel restrito pela Administração"}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer ${
+                canExportExcel
+                  ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                  : 'bg-gray-200 text-gray-500 hover:bg-gray-300'
+              }`}
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-white" />
+              {canExportExcel ? (
+                <FileSpreadsheet className="w-3.5 h-3.5 text-white" />
+              ) : (
+                <Lock className="w-3.5 h-3.5 text-gray-500" />
+              )}
               <span className="hidden sm:inline">Excel</span>
             </button>
 

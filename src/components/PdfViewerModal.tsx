@@ -8,7 +8,8 @@ import { ReportPagePreview } from './ReportPagePreview';
 import { generateOfficialReportPdf } from '../services/pdfGenerator';
 import { BrandingSettingsModal, LogoTarget } from './BrandingSettingsModal';
 import { sqlDb } from '../services/sqlDb';
-import { Download, Printer, ChevronLeft, ChevronRight, X, Image as ImageIcon } from 'lucide-react';
+import { Download, Printer, ChevronLeft, ChevronRight, X, Image as ImageIcon, Lock } from 'lucide-react';
+import { canUserExportPdf } from '../utils/permissions';
 
 interface Props {
   isOpen: boolean;
@@ -34,12 +35,17 @@ export const PdfViewerModal: React.FC<Props> = ({
   if (!isOpen) return null;
 
   const activeUser = currentUser || sqlDb.getUsers()[0];
+  const canDownloadPdf = canUserExportPdf(activeUser);
 
   const handleDownload = async () => {
+    if (!canDownloadPdf) {
+      alert('Acesso Restrito: Seu usuário não possui autorização da Administração para baixar o relatório oficial em PDF.');
+      return;
+    }
     if (isDownloading) return;
     try {
       setIsDownloading(true);
-      const doc = await generateOfficialReportPdf(report);
+      const doc = await generateOfficialReportPdf(report, activeUser);
       doc.save(`Relatorio_Gerencial_CAMP_${report.id}_Oficial.pdf`);
     } catch (err) {
       console.error('Falha ao gerar o PDF:', err);
@@ -139,18 +145,28 @@ export const PdfViewerModal: React.FC<Props> = ({
             {viewMode === 'single' ? 'Ver Todas as 15 Páginas' : 'Ver Página Individual'}
           </button>
 
-          <button
-            onClick={handleDownload}
-            disabled={isDownloading}
-            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
-          >
-            {isDownloading ? (
-              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
-            ) : (
-              <Download className="w-3.5 h-3.5" />
-            )}
-            {isDownloading ? 'Gerando PDF...' : 'Baixar PDF'}
-          </button>
+          {canDownloadPdf ? (
+            <button
+              onClick={handleDownload}
+              disabled={isDownloading}
+              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+            >
+              {isDownloading ? (
+                <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
+              {isDownloading ? 'Gerando PDF...' : 'Baixar PDF'}
+            </button>
+          ) : (
+            <div
+              title="Download em PDF restrito pela Administração. Solicite permissão ao administrador."
+              className="px-3 py-1.5 bg-gray-800 text-gray-400 border border-gray-700 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-not-allowed"
+            >
+              <Lock className="w-3.5 h-3.5 text-gray-400" />
+              <span>Download em PDF Bloqueado</span>
+            </div>
+          )}
 
           <button
             onClick={handlePrint}

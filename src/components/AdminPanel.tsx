@@ -10,7 +10,11 @@ import { generateOfficialReportPdf } from '../services/pdfGenerator';
 import { generateMonthlyExcel } from '../services/excelGenerator';
 import { AdminUsersManagement } from './AdminUsersManagement';
 import { AdminAlertsManager } from './AdminAlertsManager';
+import { AdminPermissionsPanel } from './AdminPermissionsPanel';
 import { BrandingSettingsModal } from './BrandingSettingsModal';
+import { DepartmentPermissionsEditor } from './DepartmentPermissionsEditor';
+import { getSectorName } from '../constants/sectors';
+import { UserPermissions } from '../types';
 import { 
   Database, 
   FileSpreadsheet, 
@@ -29,7 +33,8 @@ import {
   Lock,
   FileDown,
   Bell,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Shield
 } from 'lucide-react';
 
 interface Props {
@@ -47,7 +52,7 @@ export const AdminPanel: React.FC<Props> = ({
   onRefreshData,
   onOpenSupabase,
 }) => {
-  const [activeTab, setActiveTab] = useState<'users' | 'alerts' | 'branding' | 'audit' | 'scheduler' | 'matrix' | 'sql'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'permissions' | 'alerts' | 'branding' | 'audit' | 'scheduler' | 'matrix' | 'sql'>('users');
   const [isBrandingModalOpen, setIsBrandingModalOpen] = useState(false);
   const [schedules, setSchedules] = useState<ExportSchedule[]>(sqlDb.getExportSchedules());
   const [sqlInput, setSqlInput] = useState('SELECT * FROM audit_logs LIMIT 10;');
@@ -220,7 +225,18 @@ export const AdminPanel: React.FC<Props> = ({
               : 'border-transparent text-gray-500 hover:text-gray-900'
           }`}
         >
-          <Users className="w-4 h-4" /> Cadastro de Usuários & Permissões
+          <Users className="w-4 h-4" /> Cadastro de Usuários
+        </button>
+
+        <button
+          onClick={() => setActiveTab('permissions')}
+          className={`px-4 py-2.5 text-xs md:text-sm font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            activeTab === 'permissions'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-900'
+          }`}
+        >
+          <Shield className="w-4 h-4 text-indigo-600" /> Permissões por Setor & Relatório
         </button>
 
         <button
@@ -290,9 +306,14 @@ export const AdminPanel: React.FC<Props> = ({
         </button>
       </div>
 
-      {/* Tab: Cadastro de Usuários & Permissões */}
+      {/* Tab: Cadastro de Usuários */}
       {activeTab === 'users' && (
         <AdminUsersManagement currentUser={currentUser} onRefresh={onRefreshData} />
+      )}
+
+      {/* Tab: Permissões de Usuários (Setores & Relatório) */}
+      {activeTab === 'permissions' && (
+        <AdminPermissionsPanel currentUser={currentUser} onRefresh={onRefreshData} />
       )}
 
       {/* Tab: Alertas Automáticos & Painel de Métricas */}

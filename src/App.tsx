@@ -21,6 +21,7 @@ import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { BrandingSettingsModal, LogoTarget } from './components/BrandingSettingsModal';
 import { SupabaseConnectionModal } from './components/SupabaseConnectionModal';
 import { ChevronLeft, ChevronRight, Download, FileText, Lock, ShieldCheck, BarChart3, Image as ImageIcon } from 'lucide-react';
+import { canUserAccessReport, canUserExportPdf, canUserExportExcel } from './utils/permissions';
 
 export function App() {
   const [users, setUsers] = useState<User[]>(sqlDb.getUsers());
@@ -131,7 +132,11 @@ export function App() {
   };
 
   const handleExportExcel = () => {
-    generateMonthlyExcel(currentReport, auditLogs);
+    if (!canUserExportExcel(currentUser)) {
+      alert('Acesso Restrito: Seu usuário não possui autorização da Administração para baixar a planilha consolidada em Excel.');
+      return;
+    }
+    generateMonthlyExcel(currentReport, auditLogs, currentUser);
     sqlDb.addAuditLog({
       userId: currentUser.id,
       userName: currentUser.name,
@@ -213,90 +218,112 @@ export function App() {
 
         {/* VIEW 2: 15-PAGE REPORT PREVIEW (Identical layout to attached PDF) */}
         {activeView === 'preview' && (
-          <div className="space-y-6">
-            {/* Header controls for preview */}
-            <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-4xl mx-auto">
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-sm text-gray-900">Navegação do Relatório:</span>
-                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 text-xs">
+          !canUserAccessReport(currentUser) ? (
+            <div className="bg-white rounded-2xl p-8 border border-red-200 shadow-sm text-center max-w-xl mx-auto space-y-4 my-8 animate-in fade-in">
+              <div className="w-16 h-16 bg-red-50 text-red-600 rounded-2xl mx-auto flex items-center justify-center border border-red-200">
+                <Lock className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-black text-gray-900">Acesso Restrito ao Relatório Consolidado</h3>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                A visualização e download do relatório institucional de 15 páginas requer autorização expressa da Administração.
+                Seu perfil de acesso está configurado para visualizar e gerenciar exclusivamente o seu próprio departamento (<strong>{currentUser.departmentName}</strong>).
+              </p>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveView('portal')}
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
+                >
+                  Voltar ao Meu Setor Exclusivo
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Header controls for preview */}
+              <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-4xl mx-auto">
+                <div className="flex items-center gap-3">
+                  <span className="font-bold text-sm text-gray-900">Navegação do Relatório:</span>
+                  <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 text-xs">
+                    <button
+                      disabled={previewPage <= 1}
+                      onClick={() => setPreviewPage((p) => Math.max(1, p - 1))}
+                      className="p-1 hover:bg-gray-200 rounded disabled:opacity-30 cursor-pointer"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <select
+                      aria-label="Página do relatório"
+                      value={previewPage}
+                      onChange={(e) => setPreviewPage(Number(e.target.value))}
+                      className="bg-transparent font-bold text-gray-900 border-none focus:outline-none cursor-pointer text-xs"
+                    >
+                      {Array.from({ length: 15 }, (_, i) => i + 1).map((p) => (
+                        <option key={p} value={p}>
+                          Página {p}: {pageNames[p]}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-gray-500 font-semibold">/ 15</span>
+                    <button
+                      disabled={previewPage >= 15}
+                      onClick={() => setPreviewPage((p) => Math.min(15, p + 1))}
+                      className="p-1 hover:bg-gray-200 rounded disabled:opacity-30 cursor-pointer"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
                   <button
-                    disabled={previewPage <= 1}
-                    onClick={() => setPreviewPage((p) => Math.max(1, p - 1))}
-                    className="p-1 hover:bg-gray-200 rounded disabled:opacity-30 cursor-pointer"
+                    onClick={() => setIsMonthModalOpen(true)}
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-blue-200 transition-colors"
                   >
-                    <ChevronLeft className="w-4 h-4" />
+                    <span>Mês: {currentReport.monthName} / {currentReport.year}</span>
                   </button>
-                  <select
-                    aria-label="Página do relatório"
-                    value={previewPage}
-                    onChange={(e) => setPreviewPage(Number(e.target.value))}
-                    className="bg-transparent font-bold text-gray-900 border-none focus:outline-none cursor-pointer text-xs"
-                  >
-                    {Array.from({ length: 15 }, (_, i) => i + 1).map((p) => (
-                      <option key={p} value={p}>
-                        Página {p}: {pageNames[p]}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-gray-500 font-semibold">/ 15</span>
+                  {previewPage === 2 && (
+                    <button
+                      onClick={() => setIsHiringModalOpen(true)}
+                      className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <BarChart3 className="w-3.5 h-3.5" /> Ajustar Gráfico
+                    </button>
+                  )}
                   <button
-                    disabled={previewPage >= 15}
-                    onClick={() => setPreviewPage((p) => Math.min(15, p + 1))}
-                    className="p-1 hover:bg-gray-200 rounded disabled:opacity-30 cursor-pointer"
+                    type="button"
+                    onClick={() => {
+                      setTargetBrandingLogo(undefined);
+                      setIsBrandingModalOpen(true);
+                    }}
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                    title="Upload e alteração dos logotipos e selos oficiais do relatório"
                   >
-                    <ChevronRight className="w-4 h-4" />
+                    <ImageIcon className="w-3.5 h-3.5 text-blue-600" /> Upload de Logotipos
+                  </button>
+                  <button
+                    onClick={() => setIsPdfViewerOpen(true)}
+                    className="px-3 py-1.5 bg-[#0B0F19] hover:bg-black text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-red-400" /> Ver Tela Cheia / Baixar
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setIsMonthModalOpen(true)}
-                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-blue-200 transition-colors"
-                >
-                  <span>Mês: {currentReport.monthName} / {currentReport.year}</span>
-                </button>
-                {previewPage === 2 && (
-                  <button
-                    onClick={() => setIsHiringModalOpen(true)}
-                    className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-                  >
-                    <BarChart3 className="w-3.5 h-3.5" /> Ajustar Gráfico
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTargetBrandingLogo(undefined);
-                    setIsBrandingModalOpen(true);
-                  }}
-                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
-                  title="Upload e alteração dos logotipos e selos oficiais do relatório"
-                >
-                  <ImageIcon className="w-3.5 h-3.5 text-blue-600" /> Upload de Logotipos
-                </button>
-                <button
-                  onClick={() => setIsPdfViewerOpen(true)}
-                  className="px-3 py-1.5 bg-[#0B0F19] hover:bg-black text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
-                >
-                  <FileText className="w-3.5 h-3.5 text-red-400" /> Ver Tela Cheia / Baixar
-                </button>
-              </div>
+              {/* Pixel-perfect preview page */}
+              <ReportPagePreview
+                report={currentReport}
+                pageNumber={previewPage}
+                currentUser={currentUser}
+                onNavigatePage={(p) => setPreviewPage(p)}
+                onOpenHiringModal={() => setIsHiringModalOpen(true)}
+                onOpenBrandingModal={(target) => {
+                  setTargetBrandingLogo(target);
+                  setIsBrandingModalOpen(true);
+                }}
+              />
             </div>
-
-            {/* Pixel-perfect preview page */}
-            <ReportPagePreview
-              report={currentReport}
-              pageNumber={previewPage}
-              currentUser={currentUser}
-              onNavigatePage={(p) => setPreviewPage(p)}
-              onOpenHiringModal={() => setIsHiringModalOpen(true)}
-              onOpenBrandingModal={(target) => {
-                setTargetBrandingLogo(target);
-                setIsBrandingModalOpen(true);
-              }}
-            />
-          </div>
+          )
         )}
 
         {/* VIEW 3: ADMIN PANEL & SQL (Automated exports, User management, SQL console, audit logs) */}

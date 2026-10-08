@@ -4,16 +4,19 @@
  */
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { MonthlyReport } from '../types';
+import { MonthlyReport, User } from '../types';
 import { sqlDb } from './sqlDb';
 import { prepareImageForPdf, ImageInfo } from './imageUtils';
+import { canUserViewFinancials } from '../utils/permissions';
 
-export async function generateOfficialReportPdf(report: MonthlyReport): Promise<jsPDF> {
+export async function generateOfficialReportPdf(report: MonthlyReport, requestingUser?: User): Promise<jsPDF> {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
     format: 'a4',
   });
+
+  const canSeeFinancials = requestingUser ? canUserViewFinancials(requestingUser) : true;
 
   const pageWidth = 210;
   const pageHeight = 297;
@@ -530,8 +533,11 @@ export async function generateOfficialReportPdf(report: MonthlyReport): Promise<
   const finalY = (doc as any).lastAutoTable.finalY + 8;
   autoTable(doc, {
     startY: finalY,
-    head: [['Despesas', 'Valor R$']],
-    body: (rh.subMetrics?.[0]?.items || []).map((m) => [m.label, String(m.value)]),
+    head: [['Despesas', canSeeFinancials ? 'Valor R$' : 'Valor R$ (Confidencial)']],
+    body: (rh.subMetrics?.[0]?.items || []).map((m) => [
+      m.label, 
+      canSeeFinancials ? String(m.value) : '[CONFIDENCIAL]'
+    ]),
     theme: 'grid',
     headStyles: { fillColor: [11, 15, 25], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'left' },
     columnStyles: {
@@ -552,8 +558,11 @@ export async function generateOfficialReportPdf(report: MonthlyReport): Promise<
 
   autoTable(doc, {
     startY: 95,
-    head: [['Categoria', 'Valor R$']],
-    body: fin.metrics.map((m) => [m.label, String(m.value)]),
+    head: [['Categoria', canSeeFinancials ? 'Valor R$' : 'Valor R$ (Acesso Restrito / Sigilo)']],
+    body: fin.metrics.map((m) => [
+      m.label, 
+      canSeeFinancials ? String(m.value) : '[CONFIDENCIAL / ACESSO RESTRITO]'
+    ]),
     theme: 'grid',
     headStyles: { fillColor: [11, 15, 25], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'left' },
     columnStyles: {
@@ -568,7 +577,10 @@ export async function generateOfficialReportPdf(report: MonthlyReport): Promise<
   doc.setTextColor(17, 24, 39);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.text(fin.customNotes || 'Inadimplentes: sem ocorrências.', 20, finY);
+  const finNotes = canSeeFinancials
+    ? (fin.customNotes || 'Inadimplentes: sem ocorrências.')
+    : 'Valores e observações financeiras protegidos por sigilo institucional. Acesso restrito.';
+  doc.text(finNotes, 20, finY);
 
   // ==========================================
   // PAGE 5: CAPTAÇÃO DE RECURSOS

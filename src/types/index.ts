@@ -25,14 +25,27 @@ export type DepartmentId =
   | 'presidencia'
   | 'admin';
 
+export interface DepartmentPermission {
+  canView: boolean;   // Pode visualizar dados do setor (modo leitura)
+  canAccess: boolean; // Pode acessar e editar/lançar dados no setor
+}
+
 export interface UserPermissions {
-  canEditFinancials?: boolean;
-  canExportPdf?: boolean;
-  canExportExcel?: boolean;
-  canManageUsers?: boolean;
-  canViewAuditLogs?: boolean;
-  canChangeReportStatus?: boolean;
-  canManageSchedules?: boolean;
+  // Acesso ao Relatório e Downloads
+  canAccessReport?: boolean;      // Pode acessar e visualizar o relatório geral de 15 páginas
+  canExportPdf?: boolean;         // Pode baixar o relatório oficial em PDF
+  canExportExcel?: boolean;       // Pode baixar a planilha consolidada em Excel
+  canViewFinancials?: boolean;    // Pode visualizar valores financeiros e dados confidenciais
+
+  // Governança Administrativa
+  canEditFinancials?: boolean;    // Pode editar os lançamentos do setor financeiro
+  canManageUsers?: boolean;       // Pode gerenciar usuários e cadastros
+  canViewAuditLogs?: boolean;     // Pode visualizar logs de auditoria LGPD
+  canChangeReportStatus?: boolean;// Pode aprovar ou fechar períodos de relatório
+  canManageSchedules?: boolean;   // Pode configurar agendamentos e rotinas
+
+  // Permissões por Departamento (Acessar e Visualizar por setor)
+  departments?: Record<string, DepartmentPermission>;
 }
 
 export interface User {

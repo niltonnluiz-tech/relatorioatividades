@@ -385,10 +385,16 @@ export const EditUserModal: React.FC<Props> = ({
                 />
                 <button
                   type="button"
-                  onClick={() => setAdminPasswordInput('camp2026')}
-                  className="px-2.5 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-900 text-[11px] font-bold rounded-lg transition-colors cursor-pointer"
+                  onClick={() => {
+                    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$';
+                    let gen = '';
+                    for (let i = 0; i < 8; i++) gen += chars.charAt(Math.floor(Math.random() * chars.length));
+                    setAdminPasswordInput(gen);
+                  }}
+                  className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-[11px] font-bold rounded-lg transition-colors cursor-pointer"
+                  title="Gerar uma senha segura aleatória"
                 >
-                  Padrão (camp2026)
+                  Gerar Aleatória
                 </button>
               </div>
               <p className="text-[10px] text-blue-800">

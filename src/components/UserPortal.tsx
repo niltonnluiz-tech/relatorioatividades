@@ -24,9 +24,20 @@ import {
   ChevronDown,
   ChevronUp,
   BarChart3,
-  ArrowUpDown
+  ArrowUpDown,
+  Eye,
+  EyeOff,
+  Edit3,
+  ShieldAlert,
+  AlertTriangle
 } from 'lucide-react';
 import { OFFICIAL_SECTORS, getSortedSectors, getSectorName } from '../constants/sectors';
+import { 
+  canUserAccessDepartment, 
+  canUserViewDepartment, 
+  getAllowedDepartmentsForUser,
+  normalizeDepartmentId
+} from '../utils/permissions';
 
 interface Props {
   currentUser: User;
@@ -49,22 +60,36 @@ export const UserPortal: React.FC<Props> = ({
   onOpenMonthSelector,
   onOpenHiringModal,
 }) => {
-  // Identify the target department for this user
-  const deptId: DepartmentId = currentUser.role === 'admin' ? 'rh' : currentUser.departmentId;
-  const [selectedDeptId, setSelectedDeptId] = useState<DepartmentId>(deptId);
+  const isAdmin = currentUser.role === 'admin';
+  const allowedDepts = getAllowedDepartmentsForUser(currentUser);
+
+  // Initial department: if admin 'rh', otherwise user's own department or first allowed department
+  const defaultInitialDept: DepartmentId = isAdmin 
+    ? 'rh' 
+    : (allowedDepts.find(d => d.id === currentUser.departmentId)?.id || allowedDepts[0]?.id || currentUser.departmentId);
+
+  const [selectedDeptId, setSelectedDeptId] = useState<DepartmentId>(defaultInitialDept);
   const [deptSortOrder, setDeptSortOrder] = useState<'asc' | 'desc'>('asc'); // Padrão: Crescente
 
-  // If admin, they can switch between departments in the portal
-  const activeDeptKey = currentUser.role === 'admin' ? selectedDeptId : currentUser.departmentId;
+  // Active department key
+  const activeDeptKey: DepartmentId = isAdmin 
+    ? selectedDeptId 
+    : (allowedDepts.some(d => d.id === selectedDeptId) ? selectedDeptId : defaultInitialDept);
+
+  const canAccessActiveDept = canUserAccessDepartment(currentUser, activeDeptKey);
+  const canViewActiveDept = canUserViewDepartment(currentUser, activeDeptKey);
+  const isReadOnly = !canAccessActiveDept && canViewActiveDept;
+  const isAccessDenied = !canAccessActiveDept && !canViewActiveDept;
+
   const activeDept = currentReport.departments[activeDeptKey] || currentReport.departments.rh;
 
   // Local state for editing
-  const [metrics, setMetrics] = useState<MetricItem[]>(activeDept.metrics || []);
-  const [subMetrics, setSubMetrics] = useState(activeDept.subMetrics || []);
-  const [bulletActivities, setBulletActivities] = useState<string[]>(activeDept.bulletActivities || []);
-  const [subBulletSections, setSubBulletSections] = useState(activeDept.subBulletSections || []);
-  const [customNotes, setCustomNotes] = useState(activeDept.customNotes || '');
-  const [status, setStatus] = useState(activeDept.status);
+  const [metrics, setMetrics] = useState<MetricItem[]>(activeDept?.metrics || []);
+  const [subMetrics, setSubMetrics] = useState(activeDept?.subMetrics || []);
+  const [bulletActivities, setBulletActivities] = useState<string[]>(activeDept?.bulletActivities || []);
+  const [subBulletSections, setSubBulletSections] = useState(activeDept?.subBulletSections || []);
+  const [customNotes, setCustomNotes] = useState(activeDept?.customNotes || '');
+  const [status, setStatus] = useState(activeDept?.status || 'rascunho');
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -92,6 +117,10 @@ export const UserPortal: React.FC<Props> = ({
   }, [activeDeptKey, currentReport]);
 
   const handleSaveAll = async () => {
+    if (!canAccessActiveDept) {
+      setSaveFeedback('Ação Bloqueada: Seu perfil possui permissão apenas de visualização neste setor. Alterações não foram salvas.');
+      return;
+    }
     setSaving(true);
     try {
       const updated = await sqlDb.updateDepartmentData(
@@ -282,8 +311,49 @@ export const UserPortal: React.FC<Props> = ({
     }
   };
 
+  if (isAccessDenied) {
+    return (
+      <div className="bg-white rounded-2xl p-8 border border-red-200 shadow-sm text-center max-w-xl mx-auto space-y-4 my-8">
+        <div className="w-14 h-14 bg-red-100 text-red-600 rounded-2xl mx-auto flex items-center justify-center">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <h3 className="text-lg font-black text-gray-900">Acesso Restrito ao Departamento</h3>
+        <p className="text-xs text-gray-600 leading-relaxed">
+          Você não possui permissão para acessar ou visualizar o departamento <strong>{getSectorName(activeDeptKey)}</strong>. 
+          Conforme as diretrizes institucionais, cada colaborador acessa e visualiza apenas o seu próprio setor ({currentUser.departmentName}), a menos que autorização expressa seja concedida pela Administração.
+        </p>
+        {allowedDepts.length > 0 && (
+          <button
+            onClick={() => setSelectedDeptId(allowedDepts[0].id)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors"
+          >
+            Voltar para {allowedDepts[0].name}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div id="user-portal-container" className="space-y-6 max-w-5xl mx-auto">
+      {/* Informative Banner for Read-Only Mode */}
+      {isReadOnly && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-start gap-3 shadow-xs">
+          <Eye className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wide flex items-center gap-1.5">
+              Modo Somente Leitura (Visualização Autorizada)
+            </h4>
+            <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+              Você possui permissão especial concedida pela Administração para <strong>visualizar</strong> os dados deste departamento ({getSectorName(activeDeptKey)}). A edição, inclusão e exclusão de métricas e atividades estão desabilitadas para o seu usuário.
+            </p>
+          </div>
+          <span className="bg-amber-200/60 text-amber-900 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
+            Apenas Leitura
+          </span>
+        </div>
+      )}
+
       {/* Header card with user info and edit profile shortcut */}
       <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 md:p-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -354,7 +424,8 @@ export const UserPortal: React.FC<Props> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            {currentUser.role === 'admin' && (
+            {/* Department Switcher: Admin (All 15) vs Non-Admin (Only Allowed Depts) */}
+            {isAdmin ? (
               <div className="flex items-center gap-1.5 text-xs bg-gray-50 p-1 rounded-xl border border-gray-200">
                 <span className="font-bold text-gray-700 pl-1">Setor:</span>
                 <select
@@ -380,14 +451,38 @@ export const UserPortal: React.FC<Props> = ({
                   <span>{deptSortOrder === 'asc' ? 'Crescente (A-Z)' : 'Decrescente (Z-A)'}</span>
                 </button>
               </div>
+            ) : allowedDepts.length > 1 ? (
+              <div className="flex items-center gap-1.5 text-xs bg-blue-50/80 p-1 rounded-xl border border-blue-200">
+                <span className="font-bold text-blue-900 pl-1">Meus Setores Autorizados:</span>
+                <select
+                  aria-label="Selecionar entre seus setores autorizados"
+                  value={selectedDeptId}
+                  onChange={(e) => setSelectedDeptId(e.target.value as DepartmentId)}
+                  className="border border-blue-300 rounded-lg px-2.5 py-1 text-xs bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold cursor-pointer"
+                >
+                  {allowedDepts.map((sec) => (
+                    <option key={sec.id} value={sec.id}>
+                      {sec.name} {sec.canAccess ? '(Acesso Total)' : '(Somente Leitura)'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-900 rounded-xl text-xs font-bold shadow-2xs">
+                <UserIcon className="w-3.5 h-3.5 text-blue-600" />
+                <span>Meu Setor: <strong>{allowedDepts[0]?.name || getSectorName(currentUser.departmentId)}</strong></span>
+              </div>
             )}
 
             <div className="flex items-center gap-2">
               <select
                 aria-label="Status do setor"
                 value={status}
+                disabled={isReadOnly}
                 onChange={(e) => setStatus(e.target.value as any)}
-                className="border border-gray-300 rounded-lg px-3 py-1.5 text-xs font-semibold bg-gray-50 text-gray-800 cursor-pointer"
+                className={`border rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer ${
+                  isReadOnly ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed' : 'border-gray-300 bg-gray-50 text-gray-800'
+                }`}
               >
                 <option value="rascunho">🟡 Rascunho</option>
                 <option value="em_revisao">🔵 Em Revisão</option>
@@ -398,11 +493,16 @@ export const UserPortal: React.FC<Props> = ({
               <button
                 id="btn-save-portal-changes"
                 onClick={handleSaveAll}
-                disabled={saving}
-                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0B0F19] text-white text-xs font-bold rounded-lg hover:bg-black transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                disabled={saving || isReadOnly}
+                title={isReadOnly ? 'Modo somente leitura ativo: alterações desabilitadas' : 'Salvar Alterações'}
+                className={`inline-flex items-center gap-1.5 px-4 py-2 text-white text-xs font-bold rounded-lg transition-colors shadow-xs ${
+                  isReadOnly
+                    ? 'bg-gray-400 cursor-not-allowed opacity-60'
+                    : 'bg-[#0B0F19] hover:bg-black cursor-pointer disabled:opacity-50'
+                }`}
               >
                 {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                Salvar Alterações
+                {isReadOnly ? 'Somente Leitura' : 'Salvar Alterações'}
               </button>
             </div>
           </div>
@@ -446,32 +546,33 @@ export const UserPortal: React.FC<Props> = ({
 
       {/* ========================================================================= */}
       {/* CARD: ADICIONAR NOVO ITEM (Tópico de Atividade OU Valor/Quantidade)       */}
-      {/* COM OPÇÃO DE CALENDÁRIO                                                   */}
+      {/* COM OPÇÃO DE CALENDÁRIO (Apenas se tiver permissão de acesso)             */}
       {/* ========================================================================= */}
-      <div className="bg-white rounded-xl shadow-xs border-2 border-blue-100 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold">
-              <Plus className="w-5 h-5" />
+      {!isReadOnly && (
+        <div className="bg-white rounded-xl shadow-xs border-2 border-blue-100 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold">
+                <Plus className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm md:text-base font-bold text-gray-900">
+                  Adicionar Novo Item ao Setor
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Escolha o tipo de item (Tópico de atividade ou Valor/Quantidade) e selecione a data no calendário
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-sm md:text-base font-bold text-gray-900">
-                Adicionar Novo Item ao Setor
-              </h3>
-              <p className="text-xs text-gray-500">
-                Escolha o tipo de item (Tópico de atividade ou Valor/Quantidade) e selecione a data no calendário
-              </p>
-            </div>
-          </div>
 
-          <button
-            type="button"
-            onClick={() => setIsAddItemOpen(!isAddItemOpen)}
-            className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 cursor-pointer"
-          >
-            {isAddItemOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => setIsAddItemOpen(!isAddItemOpen)}
+              className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 cursor-pointer"
+            >
+              {isAddItemOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+          </div>
 
         {isAddItemOpen && (
           <div className="space-y-4 pt-1">
@@ -642,6 +743,7 @@ export const UserPortal: React.FC<Props> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* ========================================================================= */}
       {/* 1. Tabular Metrics (Indicadores & Quantitativos com Opção de Calendário) */}
@@ -686,18 +788,23 @@ export const UserPortal: React.FC<Props> = ({
                             type="date"
                             aria-label={`Data de ${m.label}`}
                             value={m.date}
+                            disabled={isReadOnly}
                             onChange={(e) => handleMetricDateChange(m.id, e.target.value)}
-                            className="text-xs font-mono font-semibold text-gray-700 bg-transparent focus:outline-none cursor-pointer"
+                            className="text-xs font-mono font-semibold text-gray-700 bg-transparent focus:outline-none cursor-pointer disabled:cursor-not-allowed"
                           />
-                          <button
-                            type="button"
-                            title="Remover data deste indicador"
-                            onClick={() => handleMetricDateChange(m.id, '')}
-                            className="text-gray-400 hover:text-red-500 font-bold text-xs px-1 cursor-pointer"
-                          >
-                            ×
-                          </button>
+                          {!isReadOnly && (
+                            <button
+                              type="button"
+                              title="Remover data deste indicador"
+                              onClick={() => handleMetricDateChange(m.id, '')}
+                              className="text-gray-400 hover:text-red-500 font-bold text-xs px-1 cursor-pointer"
+                            >
+                              ×
+                            </button>
+                          )}
                         </div>
+                      ) : isReadOnly ? (
+                        <span className="text-[11px] text-gray-400 font-mono">—</span>
                       ) : (
                         <button
                           type="button"
@@ -713,7 +820,7 @@ export const UserPortal: React.FC<Props> = ({
 
                     <td className="p-2 text-center">
                       <div className="flex items-center justify-center gap-1.5">
-                        {typeof m.value === 'number' && (
+                        {typeof m.value === 'number' && !isReadOnly && (
                           <button
                             type="button"
                             onClick={() => handleMetricChange(m.id, Math.max(0, (m.value as number) - 1))}
@@ -726,14 +833,19 @@ export const UserPortal: React.FC<Props> = ({
                           type="text"
                           aria-label={m.label}
                           value={String(m.value)}
+                          disabled={isReadOnly}
                           onChange={(e) => {
                             const val = e.target.value;
                             const num = Number(val);
                             handleMetricChange(m.id, isNaN(num) ? val : num);
                           }}
-                          className="w-28 text-center border border-gray-300 rounded px-2 py-1 text-xs md:text-sm font-bold text-gray-900 bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          className={`w-28 text-center border rounded px-2 py-1 text-xs md:text-sm font-bold ${
+                            isReadOnly 
+                              ? 'bg-gray-100 text-gray-700 border-gray-200 cursor-not-allowed'
+                              : 'text-gray-900 bg-white border-gray-300 focus:ring-1 focus:ring-blue-500 focus:outline-none'
+                          }`}
                         />
-                        {typeof m.value === 'number' && (
+                        {typeof m.value === 'number' && !isReadOnly && (
                           <button
                             type="button"
                             onClick={() => handleMetricChange(m.id, (m.value as number) + 1)}
@@ -746,14 +858,20 @@ export const UserPortal: React.FC<Props> = ({
                     </td>
 
                     <td className="p-2 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveMetric(m.id)}
-                        title="Remover indicador"
-                        className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {!isReadOnly ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveMetric(m.id)}
+                          title="Remover indicador"
+                          className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      ) : (
+                        <span title="Modo leitura: remoção bloqueada">
+                          <Lock className="w-3.5 h-3.5 text-gray-300 mx-auto" />
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -795,15 +913,16 @@ export const UserPortal: React.FC<Props> = ({
                           type="date"
                           aria-label={`Data de ${m.label}`}
                           value={m.date || defaultReportDate}
+                          disabled={isReadOnly}
                           onChange={(e) => handleSubMetricDateChange(sIdx, m.id, e.target.value)}
-                          className="text-xs font-mono font-semibold text-gray-700 bg-transparent focus:outline-none cursor-pointer"
+                          className="text-xs font-mono font-semibold text-gray-700 bg-transparent focus:outline-none cursor-pointer disabled:cursor-not-allowed"
                         />
                       </div>
                     </td>
 
                     <td className="p-2 text-center">
                       <div className="flex items-center justify-center gap-1.5">
-                        {typeof m.value === 'number' && (
+                        {typeof m.value === 'number' && !isReadOnly && (
                           <button
                             type="button"
                             onClick={() => handleSubMetricChange(sIdx, m.id, Math.max(0, (m.value as number) - 1))}
@@ -816,14 +935,19 @@ export const UserPortal: React.FC<Props> = ({
                           type="text"
                           aria-label={m.label}
                           value={String(m.value)}
+                          disabled={isReadOnly}
                           onChange={(e) => {
                             const val = e.target.value;
                             const num = Number(val);
                             handleSubMetricChange(sIdx, m.id, isNaN(num) ? val : num);
                           }}
-                          className="w-28 text-center border border-gray-300 rounded px-2 py-1 text-xs md:text-sm font-bold text-gray-900 bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                          className={`w-28 text-center border rounded px-2 py-1 text-xs md:text-sm font-bold ${
+                            isReadOnly
+                              ? 'bg-gray-100 text-gray-700 border-gray-200 cursor-not-allowed'
+                              : 'text-gray-900 bg-white border-gray-300 focus:ring-1 focus:ring-blue-500 focus:outline-none'
+                          }`}
                         />
-                        {typeof m.value === 'number' && (
+                        {typeof m.value === 'number' && !isReadOnly && (
                           <button
                             type="button"
                             onClick={() => handleSubMetricChange(sIdx, m.id, (m.value as number) + 1)}
@@ -882,18 +1006,23 @@ export const UserPortal: React.FC<Props> = ({
                           type="date"
                           aria-label={`Data da atividade ${idx + 1}`}
                           value={date}
+                          disabled={isReadOnly}
                           onChange={(e) => handleUpdateActivityDate(idx, e.target.value)}
-                          className="text-[11px] font-mono font-semibold text-gray-700 bg-transparent focus:outline-none cursor-pointer"
+                          className="text-[11px] font-mono font-semibold text-gray-700 bg-transparent focus:outline-none cursor-pointer disabled:cursor-not-allowed"
                         />
-                        <button
-                          type="button"
-                          title="Remover data desta atividade"
-                          onClick={() => handleRemoveActivityDate(idx)}
-                          className="text-gray-400 hover:text-red-500 font-bold text-xs px-1 cursor-pointer"
-                        >
-                          ×
-                        </button>
+                        {!isReadOnly && (
+                          <button
+                            type="button"
+                            title="Remover data desta atividade"
+                            onClick={() => handleRemoveActivityDate(idx)}
+                            className="text-gray-400 hover:text-red-500 font-bold text-xs px-1 cursor-pointer"
+                          >
+                            ×
+                          </button>
+                        )}
                       </div>
+                    ) : isReadOnly ? (
+                      <span className="text-[11px] text-gray-400 font-mono">—</span>
                     ) : (
                       <button
                         type="button"
@@ -911,6 +1040,7 @@ export const UserPortal: React.FC<Props> = ({
                     type="text"
                     aria-label={`Texto da atividade ${idx + 1}`}
                     value={text}
+                    disabled={isReadOnly}
                     onChange={(e) => {
                       const newArr = [...bulletActivities];
                       if (hasDate && date) {
@@ -921,17 +1051,27 @@ export const UserPortal: React.FC<Props> = ({
                       }
                       setBulletActivities(newArr);
                     }}
-                    className="flex-1 bg-white sm:bg-transparent px-2 py-1 rounded sm:rounded-none border sm:border-none border-gray-300 text-xs md:text-sm text-gray-900 focus:outline-none focus:ring-1 sm:focus:ring-0 focus:ring-blue-500 font-medium"
+                    className={`flex-1 px-2 py-1 rounded sm:rounded-none text-xs md:text-sm font-medium ${
+                      isReadOnly
+                        ? 'bg-transparent text-gray-700 cursor-default border-none'
+                        : 'bg-white sm:bg-transparent border sm:border-none border-gray-300 text-gray-900 focus:outline-none focus:ring-1 sm:focus:ring-0 focus:ring-blue-500'
+                    }`}
                   />
 
-                  <button
-                    type="button"
-                    aria-label={`Remover atividade ${idx + 1}`}
-                    onClick={() => handleRemoveBullet(idx)}
-                    className="self-end sm:self-center p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {!isReadOnly ? (
+                    <button
+                      type="button"
+                      aria-label={`Remover atividade ${idx + 1}`}
+                      onClick={() => handleRemoveBullet(idx)}
+                      className="self-end sm:self-center p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <span title="Modo somente leitura" className="self-end sm:self-center p-1">
+                      <Lock className="w-3.5 h-3.5 text-gray-300" />
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -954,12 +1094,17 @@ export const UserPortal: React.FC<Props> = ({
                 <input
                   type="text"
                   value={item}
+                  disabled={isReadOnly}
                   onChange={(e) => {
                     const next = [...subBulletSections];
                     next[sIdx].items[itemIdx] = e.target.value;
                     setSubBulletSections(next);
                   }}
-                  className="flex-1 text-xs md:text-sm text-gray-900 border border-gray-200 rounded px-2 py-1 bg-white"
+                  className={`flex-1 text-xs md:text-sm rounded px-2 py-1 ${
+                    isReadOnly
+                      ? 'bg-gray-50 text-gray-700 border-none cursor-default'
+                      : 'text-gray-900 border border-gray-200 bg-white'
+                  }`}
                 />
               </div>
             ))}
@@ -974,11 +1119,16 @@ export const UserPortal: React.FC<Props> = ({
         </span>
         <button
           onClick={handleSaveAll}
-          disabled={saving}
-          className="inline-flex items-center gap-1.5 px-5 py-2 bg-[#0B0F19] text-white text-xs font-bold rounded-lg hover:bg-black transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+          disabled={saving || isReadOnly}
+          title={isReadOnly ? 'Modo somente leitura: alterações desabilitadas' : 'Salvar Alterações do Setor'}
+          className={`inline-flex items-center gap-1.5 px-5 py-2 text-white text-xs font-bold rounded-lg transition-colors shadow-xs ${
+            isReadOnly
+              ? 'bg-gray-400 cursor-not-allowed opacity-60'
+              : 'bg-[#0B0F19] hover:bg-black cursor-pointer disabled:opacity-50'
+          }`}
         >
           {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-          Salvar Alterações do Setor
+          {isReadOnly ? 'Somente Leitura' : 'Salvar Alterações do Setor'}
         </button>
       </div>
     </div>
