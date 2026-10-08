@@ -79,8 +79,8 @@ export const TwoFactorModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 relative border border-gray-100 animate-in fade-in zoom-in-95">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 sm:p-4 backdrop-blur-xs">
+      <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-4 sm:p-6 relative border border-gray-100 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
           className="absolute right-4 top-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 transition-colors"

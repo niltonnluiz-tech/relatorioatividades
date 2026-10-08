@@ -355,11 +355,11 @@ export const UserPortal: React.FC<Props> = ({
       )}
 
       {/* Header card with user info and edit profile shortcut */}
-      <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5 md:p-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="relative group">
-              <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-gray-200 bg-gray-100 flex-shrink-0 flex items-center justify-center font-bold text-gray-700 shadow-xs">
+      <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4 sm:p-5 md:p-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3.5 sm:gap-4">
+            <div className="relative group shrink-0">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border-2 border-gray-200 bg-gray-100 flex-shrink-0 flex items-center justify-center font-bold text-gray-700 shadow-xs">
                 {currentUser.avatarUrl ? (
                   <img
                     src={currentUser.avatarUrl}
@@ -373,9 +373,9 @@ export const UserPortal: React.FC<Props> = ({
               </div>
             </div>
 
-            <div>
+            <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg md:text-xl font-bold text-gray-900">{activeDept.coordinatorTitle}</h2>
+                <h2 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 break-words">{activeDept.coordinatorTitle}</h2>
                 {onOpenMonthSelector ? (
                   <button
                     type="button"
@@ -393,9 +393,9 @@ export const UserPortal: React.FC<Props> = ({
                   </span>
                 )}
               </div>
-              <p className="text-xs md:text-sm text-gray-600 mt-0.5">
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 break-words">
                 Coordenador(a): <span className="font-semibold text-gray-900">{activeDept.coordinatorName}</span> •{' '}
-                {activeDept.coordinatorPhone} • {activeDept.coordinatorEmail}
+                {activeDept.coordinatorPhone} • <span className="break-all">{activeDept.coordinatorEmail}</span>
               </p>
               <div className="flex flex-wrap items-center gap-3 mt-1.5">
                 {onOpenProfile && (
@@ -1113,7 +1113,7 @@ export const UserPortal: React.FC<Props> = ({
       ))}
 
       {/* Bottom Save Bar */}
-      <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
         <span className="text-xs text-gray-500">
           Todas as alterações são auditadas e gravadas com hash criptográfico SHA-256
         </span>
@@ -1121,7 +1121,7 @@ export const UserPortal: React.FC<Props> = ({
           onClick={handleSaveAll}
           disabled={saving || isReadOnly}
           title={isReadOnly ? 'Modo somente leitura: alterações desabilitadas' : 'Salvar Alterações do Setor'}
-          className={`inline-flex items-center gap-1.5 px-5 py-2 text-white text-xs font-bold rounded-lg transition-colors shadow-xs ${
+          className={`w-full sm:w-auto justify-center inline-flex items-center gap-1.5 px-5 py-2 text-white text-xs font-bold rounded-lg transition-colors shadow-xs ${
             isReadOnly
               ? 'bg-gray-400 cursor-not-allowed opacity-60'
               : 'bg-[#0B0F19] hover:bg-black cursor-pointer disabled:opacity-50'

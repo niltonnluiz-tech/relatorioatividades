@@ -60,10 +60,10 @@ export const MonthSelectorModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-200 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-200 animate-in fade-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="bg-[#0B0F19] text-white p-5 flex items-center justify-between">
+        <div className="bg-[#0B0F19] text-white p-4 sm:p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-600/30 text-blue-400 rounded-lg">
               <Calendar className="w-5 h-5" />

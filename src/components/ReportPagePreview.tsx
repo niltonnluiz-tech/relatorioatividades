@@ -98,33 +98,33 @@ export const ReportPagePreview: React.FC<Props> = ({
 
   // Page header present on pages 2-15
   const renderHeader = (title?: string) => (
-    <div className="relative mb-6">
-      <div className="flex items-center justify-between">
+    <div className="relative mb-4 sm:mb-6">
+      <div className="flex items-center justify-between gap-3">
         {/* Black month tag + institution logo */}
-        <div className="flex items-center gap-3">
-          <div className="bg-[#0B0F19] text-white px-3 py-1 rounded text-xs font-bold tracking-wider">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+          <div className="bg-[#0B0F19] text-white px-2.5 sm:px-3 py-1 rounded text-[11px] sm:text-xs font-bold tracking-wider">
             {report.monthName.toUpperCase()} DE {report.year}
           </div>
           {institutionSettings.logoUrl && (
             <img
               src={institutionSettings.logoUrl}
               alt="Logo CAMP"
-              className="h-6 max-w-[90px] object-contain"
+              className="h-5 sm:h-6 max-w-[80px] sm:max-w-[90px] object-contain"
             />
           )}
         </div>
 
         {/* Dot matrix pattern */}
-        <div className="grid grid-cols-6 gap-1.5 opacity-90">
+        <div className="grid grid-cols-6 gap-1 sm:gap-1.5 opacity-90 shrink-0">
           {Array.from({ length: 24 }).map((_, i) => (
-            <div key={i} className="w-1.5 h-1.5 rounded-full bg-[#0B0F19]" />
+            <div key={i} className="w-1 sm:w-1.5 h-1 sm:h-1.5 rounded-full bg-[#0B0F19]" />
           ))}
         </div>
       </div>
 
       {title && (
-        <div className="mt-5 border-b-2 border-[#0B0F19] pb-2 inline-block">
-          <h2 className="text-3xl font-black text-[#0B0F19] tracking-tight">{title}</h2>
+        <div className="mt-4 sm:mt-5 border-b-2 border-[#0B0F19] pb-2 inline-block max-w-full">
+          <h2 className="text-2xl sm:text-3xl font-black text-[#0B0F19] tracking-tight break-words">{title}</h2>
         </div>
       )}
     </div>
@@ -138,8 +138,8 @@ export const ReportPagePreview: React.FC<Props> = ({
     email: string,
     avatarUrl?: string
   ) => (
-    <div className="flex items-center gap-5 my-6 p-4 rounded-xl bg-gray-50 border border-gray-100">
-      <div className="w-20 h-20 rounded-full overflow-hidden border-2 border-gray-200 bg-gray-200 flex-shrink-0 shadow-sm flex items-center justify-center text-gray-600 font-bold text-xl">
+    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3.5 sm:gap-5 my-4 sm:my-6 p-3.5 sm:p-4 rounded-xl bg-gray-50 border border-gray-100">
+      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-gray-200 bg-gray-200 flex-shrink-0 shadow-sm flex items-center justify-center text-gray-600 font-bold text-lg sm:text-xl">
         {avatarUrl ? (
           <img
             src={avatarUrl}
@@ -151,9 +151,9 @@ export const ReportPagePreview: React.FC<Props> = ({
           name.split(' ').map((n) => n[0]).slice(0, 2).join('')
         )}
       </div>
-      <div>
-        <h3 className="text-xl font-bold text-[#0B0F19] leading-snug">{name}</h3>
-        <p className="text-sm font-semibold text-gray-600 mb-2">{title}</p>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-lg sm:text-xl font-bold text-[#0B0F19] leading-snug break-words">{name}</h3>
+        <p className="text-xs sm:text-sm font-semibold text-gray-600 mb-1.5">{title}</p>
         <div className="space-y-0.5 text-xs">
           <p className="flex items-center gap-2 font-medium text-gray-800">
             <span className="font-bold">Tel:</span> {phone}
@@ -213,12 +213,12 @@ export const ReportPagePreview: React.FC<Props> = ({
             )}
 
             {/* Top dark block */}
-            <div className="bg-[#0B0F19] text-white p-8 rounded-t-xl -m-6 mb-8 relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="bg-[#0B0F19] text-white p-5 sm:p-8 rounded-t-xl -m-4 sm:-m-6 md:-m-10 mb-6 sm:mb-8 relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
-                <div className="text-2xl font-bold">{report.monthName}</div>
-                <div className="text-xl font-bold opacity-90">{report.year}</div>
-                <div className="w-16 h-1 bg-white my-4" />
-                <h1 className="text-4xl md:text-5xl font-black leading-tight tracking-wider mt-2">
+                <div className="text-xl sm:text-2xl font-bold">{report.monthName}</div>
+                <div className="text-lg sm:text-xl font-bold opacity-90">{report.year}</div>
+                <div className="w-16 h-1 bg-white my-3 sm:my-4" />
+                <h1 className="text-3xl sm:text-4xl md:text-5xl font-black leading-tight tracking-wider mt-2">
                   RELATÓRIO
                   <br />
                   GERENCIAL
@@ -697,8 +697,8 @@ export const ReportPagePreview: React.FC<Props> = ({
             )}
 
             {/* Table 1: Indicador / Quantidade */}
-            <div className="border border-gray-300 rounded-lg overflow-hidden mb-6">
-              <table className="w-full text-xs md:text-sm">
+            <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
+              <table className="w-full text-xs md:text-sm min-w-[280px]">
                 <thead>
                   <tr className="bg-[#0B0F19] text-white">
                     <th className="p-2.5 text-left font-bold">Indicador</th>
@@ -717,7 +717,7 @@ export const ReportPagePreview: React.FC<Props> = ({
             </div>
 
             {/* Table 2: Despesas */}
-            <div className="border border-gray-300 rounded-lg overflow-hidden">
+            <div className="border border-gray-300 rounded-lg overflow-x-auto">
               <div className="bg-[#0B0F19] text-white px-3 py-1.5 flex items-center justify-between text-xs font-semibold">
                 <span>Despesas (Colaboradores e Aprendizes)</span>
                 <span className="bg-emerald-600/40 text-emerald-200 text-[10px] px-2 py-0.5 rounded flex items-center gap-1">
@@ -789,8 +789,8 @@ export const ReportPagePreview: React.FC<Props> = ({
               </div>
             )}
 
-            <div className="border border-gray-300 rounded-lg overflow-hidden mb-6">
-              <div className="bg-[#0B0F19] text-white px-3 py-1.5 flex items-center justify-between text-xs font-semibold">
+            <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
+              <div className="bg-[#0B0F19] text-white px-3 py-1.5 flex items-center justify-between text-xs font-semibold min-w-[320px]">
                 <span className="flex items-center gap-1.5">
                   Registros Financeiros Oficiais
                   {!hasFinancialAccess && (
@@ -857,8 +857,8 @@ export const ReportPagePreview: React.FC<Props> = ({
             )}
 
             {/* Table 1: Captação de Recursos */}
-            <div className="border border-gray-300 rounded-lg overflow-hidden mb-6">
-              <table className="w-full text-xs md:text-sm">
+            <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
+              <table className="w-full text-xs md:text-sm min-w-[280px]">
                 <thead>
                   <tr className="bg-[#0B0F19] text-white">
                     <th className="p-2.5 text-center font-bold" colSpan={2}>
@@ -878,8 +878,8 @@ export const ReportPagePreview: React.FC<Props> = ({
             </div>
 
             {/* Table 2: Recrutamento e Seleção */}
-            <div className="border border-gray-300 rounded-lg overflow-hidden">
-              <table className="w-full text-xs md:text-sm">
+            <div className="border border-gray-300 rounded-lg overflow-x-auto">
+              <table className="w-full text-xs md:text-sm min-w-[280px]">
                 <thead>
                   <tr className="bg-[#0B0F19] text-white">
                     <th className="p-2.5 text-center font-bold" colSpan={2}>
@@ -916,8 +916,8 @@ export const ReportPagePreview: React.FC<Props> = ({
               ens.coordinatorAvatar
             )}
 
-            <div className="border border-gray-300 rounded-lg overflow-hidden">
-              <table className="w-full text-xs">
+            <div className="border border-gray-300 rounded-lg overflow-x-auto">
+              <table className="w-full text-xs min-w-[280px]">
                 <thead>
                   <tr className="bg-[#0B0F19] text-white">
                     <th className="p-2.5 text-center font-bold text-sm" colSpan={2}>
@@ -948,8 +948,8 @@ export const ReportPagePreview: React.FC<Props> = ({
             {renderHeader()}
 
             {/* Table 1: Psicologia */}
-            <div className="border border-gray-300 rounded-lg overflow-hidden mb-6">
-              <table className="w-full text-xs">
+            <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
+              <table className="w-full text-xs min-w-[280px]">
                 <thead>
                   <tr className="bg-[#0B0F19] text-white">
                     <th className="p-2 text-center font-bold text-sm" colSpan={2}>
@@ -969,8 +969,8 @@ export const ReportPagePreview: React.FC<Props> = ({
             </div>
 
             {/* Table 2: Supervisora Social */}
-            <div className="border border-gray-300 rounded-lg overflow-hidden">
-              <table className="w-full text-xs">
+            <div className="border border-gray-300 rounded-lg overflow-x-auto">
+              <table className="w-full text-xs min-w-[280px]">
                 <thead>
                   <tr className="bg-[#0B0F19] text-white">
                     <th className="p-2 text-center font-bold text-sm" colSpan={2}>
@@ -1055,8 +1055,8 @@ export const ReportPagePreview: React.FC<Props> = ({
             {renderHeader()}
 
             {/* Table: Estágio */}
-            <div className="border border-gray-300 rounded-lg overflow-hidden mb-6">
-              <table className="w-full text-xs">
+            <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
+              <table className="w-full text-xs min-w-[280px]">
                 <thead>
                   <tr className="bg-[#0B0F19] text-white">
                     <th className="p-2 text-center font-bold text-sm" colSpan={2}>
@@ -1104,8 +1104,8 @@ export const ReportPagePreview: React.FC<Props> = ({
             {renderHeader()}
 
             {/* Table: Marketing */}
-            <div className="border border-gray-300 rounded-lg overflow-hidden mb-8">
-              <table className="w-full text-xs md:text-sm">
+            <div className="border border-gray-300 rounded-lg overflow-x-auto mb-8">
+              <table className="w-full text-xs md:text-sm min-w-[280px]">
                 <thead>
                   <tr className="bg-[#0B0F19] text-white">
                     <th className="p-2.5 text-center font-bold text-sm" colSpan={2}>
@@ -1248,15 +1248,15 @@ export const ReportPagePreview: React.FC<Props> = ({
   return (
     <div
       id={`report-page-${pageNumber}`}
-      className="bg-white rounded-xl shadow-md border border-gray-200 p-6 md:p-10 max-w-4xl mx-auto min-h-[820px] flex flex-col justify-between select-text"
+      className="bg-white rounded-xl shadow-md border border-gray-200 p-4 sm:p-6 md:p-10 max-w-4xl w-full mx-auto min-h-[700px] sm:min-h-[820px] flex flex-col justify-between select-text"
     >
       <div>{renderContent()}</div>
 
       {/* Page Footer Navigation / Counter */}
-      <div className="mt-8 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-        <span className="font-semibold text-gray-700">CAMP Piero Pollone - Santo André</span>
-        <span className="font-mono bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-bold">
-          Página {pageNumber} de 15
+      <div className="mt-6 sm:mt-8 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
+        <span className="font-semibold text-gray-700 truncate mr-2">CAMP Piero Pollone - Santo André</span>
+        <span className="font-mono bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-bold shrink-0">
+          Pág. {pageNumber} de 15
         </span>
       </div>
     </div>

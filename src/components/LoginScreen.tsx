@@ -163,24 +163,24 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
   return (
     <div
       translate="no"
-      className="notranslate min-h-screen bg-gradient-to-br from-slate-900 via-[#0B0F19] to-slate-950 flex flex-col justify-center items-center p-4 text-white font-sans antialiased"
+      className="notranslate min-h-screen bg-gradient-to-br from-slate-900 via-[#0B0F19] to-slate-950 flex flex-col justify-center items-center p-3 sm:p-4 md:p-6 text-white font-sans antialiased"
     >
       {/* Background Glow */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="relative w-full max-w-xl bg-gray-900/90 border border-gray-800 rounded-3xl shadow-2xl backdrop-blur-xl overflow-hidden">
+      <div className="relative w-full max-w-xl bg-gray-900/90 border border-gray-800 rounded-2xl sm:rounded-3xl shadow-2xl backdrop-blur-xl overflow-hidden">
         {/* Brand Header */}
-        <div className="p-8 pb-6 border-b border-gray-800/80 text-center">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 text-white font-black text-xl shadow-lg shadow-blue-500/20 mb-3">
+        <div className="p-5 sm:p-8 pb-4 sm:pb-6 border-b border-gray-800/80 text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-blue-600 text-white font-black text-lg sm:text-xl shadow-lg shadow-blue-500/20 mb-2 sm:mb-3">
             CAMP
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-white">
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
             CAMP Piero Pollone
           </h1>
-          <p className="text-xs text-gray-400 mt-1 uppercase tracking-widest font-semibold">
+          <p className="text-[11px] sm:text-xs text-gray-400 mt-1 uppercase tracking-widest font-semibold">
             Portal de Gestão Mensal & Relatório Gerencial
           </p>
-          <div className="flex items-center justify-center gap-3 mt-4 text-[11px] text-gray-400 font-medium">
+          <div className="flex items-center justify-center gap-2 sm:gap-3 mt-3 sm:mt-4 text-[10px] sm:text-[11px] text-gray-400 font-medium">
             <span className="flex items-center gap-1">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Criptografia AES-256
             </span>
@@ -192,7 +192,7 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
         </div>
 
         {/* Body */}
-        <div className="p-8 space-y-6">
+        <div className="p-4 sm:p-8 space-y-4 sm:space-y-6">
           {errorMsg && (
             <div className="p-3 bg-red-950/60 border border-red-800/80 text-red-200 text-xs font-semibold rounded-xl flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />

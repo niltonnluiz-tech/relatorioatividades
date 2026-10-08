@@ -79,18 +79,27 @@ export const PdfViewerModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-900/90 backdrop-blur-xs">
       {/* Top action bar */}
-      <div className="bg-[#0B0F19] text-white px-4 py-3 border-b border-gray-800 flex items-center justify-between gap-4 flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <span className="font-black text-sm md:text-base tracking-tight text-white">
-            Visualizador Oficial do Relatório
-          </span>
-          <span className="bg-gray-800 text-gray-300 text-xs px-2.5 py-0.5 rounded font-mono">
-            {report.fullTitle}
-          </span>
+      <div className="bg-[#0B0F19] text-white px-3 sm:px-4 py-2.5 sm:py-3 border-b border-gray-800 flex flex-col md:flex-row md:items-center justify-between gap-2.5 sm:gap-4 flex-shrink-0">
+        <div className="flex items-center justify-between md:justify-start gap-2 sm:gap-3 w-full md:w-auto">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <span className="font-black text-xs sm:text-sm md:text-base tracking-tight text-white">
+              Visualizador Oficial
+            </span>
+            <span className="bg-gray-800 text-gray-300 text-[10px] sm:text-xs px-2 py-0.5 rounded font-mono truncate max-w-[140px] sm:max-w-none">
+              {report.fullTitle}
+            </span>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="md:hidden p-1.5 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Page selector & view mode */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-between md:justify-end gap-1.5 sm:gap-2 w-full md:w-auto">
           {viewMode === 'single' && (
             <div className="flex items-center gap-1 bg-gray-800 rounded-lg p-1 text-xs">
               <button
@@ -105,7 +114,7 @@ export const PdfViewerModal: React.FC<Props> = ({
                 aria-label="Selecionar página do relatório"
                 value={currentPage}
                 onChange={(e) => setCurrentPage(Number(e.target.value))}
-                className="bg-transparent text-white font-semibold text-xs border-none focus:outline-none cursor-pointer"
+                className="bg-transparent text-white font-semibold text-xs border-none focus:outline-none cursor-pointer max-w-[130px] sm:max-w-none truncate"
               >
                 {Array.from({ length: 15 }, (_, i) => i + 1).map((p) => (
                   <option key={p} value={p} className="bg-gray-900 text-white">
@@ -131,40 +140,40 @@ export const PdfViewerModal: React.FC<Props> = ({
               setTargetLogoFocus(undefined);
               setIsBrandingModalOpen(true);
             }}
-            className="px-2.5 py-1.5 bg-blue-900/80 hover:bg-blue-800 text-blue-200 border border-blue-700/60 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1.5 transition-colors"
+            className="px-2 py-1.5 sm:px-2.5 bg-blue-900/80 hover:bg-blue-800 text-blue-200 border border-blue-700/60 rounded-lg text-xs font-bold cursor-pointer flex items-center gap-1.5 transition-colors"
             title="Upload e alteração dos 5 logotipos/selos do relatório"
           >
             <ImageIcon className="w-3.5 h-3.5 text-blue-400" />
-            <span className="hidden sm:inline">Logotipos do Relatório</span>
+            <span className="hidden sm:inline">Logotipos</span>
           </button>
 
           <button
             onClick={() => setViewMode(viewMode === 'single' ? 'all' : 'single')}
-            className="px-2.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg text-xs font-medium cursor-pointer"
+            className="px-2 py-1.5 sm:px-2.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg text-xs font-medium cursor-pointer"
           >
-            {viewMode === 'single' ? 'Ver Todas as 15 Páginas' : 'Ver Página Individual'}
+            {viewMode === 'single' ? 'Ver 15 Páginas' : 'Pág. Individual'}
           </button>
 
           {canDownloadPdf ? (
             <button
               onClick={handleDownload}
               disabled={isDownloading}
-              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
+              className="px-2.5 py-1.5 sm:px-3 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all"
             >
               {isDownloading ? (
                 <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin inline-block" />
               ) : (
                 <Download className="w-3.5 h-3.5" />
               )}
-              {isDownloading ? 'Gerando PDF...' : 'Baixar PDF'}
+              <span>{isDownloading ? 'Gerando...' : 'Baixar PDF'}</span>
             </button>
           ) : (
             <div
               title="Download em PDF restrito pela Administração. Solicite permissão ao administrador."
-              className="px-3 py-1.5 bg-gray-800 text-gray-400 border border-gray-700 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-not-allowed"
+              className="px-2.5 py-1.5 bg-gray-800 text-gray-400 border border-gray-700 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-not-allowed"
             >
               <Lock className="w-3.5 h-3.5 text-gray-400" />
-              <span>Download em PDF Bloqueado</span>
+              <span className="hidden sm:inline">Bloqueado</span>
             </div>
           )}
 
@@ -178,7 +187,8 @@ export const PdfViewerModal: React.FC<Props> = ({
 
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer ml-2"
+            className="hidden md:inline-flex p-1.5 hover:bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors cursor-pointer ml-1"
+            title="Fechar Visualizador"
           >
             <X className="w-5 h-5" />
           </button>
@@ -186,7 +196,7 @@ export const PdfViewerModal: React.FC<Props> = ({
       </div>
 
       {/* Main Page Display Canvas */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-8 flex flex-col items-center gap-8">
+      <div className="flex-1 overflow-y-auto p-2 sm:p-4 md:p-8 flex flex-col items-center gap-4 sm:gap-8">
         {viewMode === 'single' ? (
           <ReportPagePreview
             report={report}

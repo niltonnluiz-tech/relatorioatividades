@@ -119,10 +119,10 @@ export const EditUserModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs">
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden border border-gray-200 animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="bg-[#0B0F19] text-white p-5 flex items-center justify-between">
+        <div className="bg-[#0B0F19] text-white p-4 sm:p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-blue-600/30 text-blue-400 flex items-center justify-center border border-blue-500/20">
               <UserIcon className="w-5 h-5" />
@@ -152,7 +152,7 @@ export const EditUserModal: React.FC<Props> = ({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[82vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5 max-h-[82vh] overflow-y-auto">
           {/* Avatar preview & info bar */}
           <div className="flex items-center gap-4 p-3.5 bg-gray-50 border border-gray-200 rounded-xl">
             <div className="relative">

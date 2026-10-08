@@ -112,10 +112,10 @@ export const ChangePasswordModal: React.FC<Props> = ({
   const strength = getPasswordStrength();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-      <div className="bg-white text-gray-900 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border border-gray-200 flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in">
+      <div className="bg-white text-gray-900 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden border border-gray-200 flex flex-col max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="p-5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+        <div className="p-4 sm:p-5 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-blue-100 text-blue-800 rounded-xl">
               <KeyRound className="w-5 h-5" />

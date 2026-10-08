@@ -255,7 +255,7 @@ export const Navbar: React.FC<Props> = ({
             <button
               onClick={onOpenLgpd}
               title="Políticas de Privacidade e Direitos LGPD"
-              className="p-1.5 text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-emerald-200"
+              className="hidden sm:inline-flex p-1.5 text-gray-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-emerald-200"
             >
               <ShieldCheck className="w-4 h-4" />
             </button>
@@ -264,7 +264,7 @@ export const Navbar: React.FC<Props> = ({
             <button
               onClick={onOpen2Fa}
               title={currentUser.twoFactorEnabled ? '2FA Ativo' : 'Ativar 2FA'}
-              className={`p-1.5 rounded-xl transition-colors cursor-pointer border ${
+              className={`hidden sm:inline-flex p-1.5 rounded-xl transition-colors cursor-pointer border ${
                 currentUser.twoFactorEnabled
                   ? 'text-blue-700 bg-blue-50/50 border-blue-200 hover:bg-blue-100'
                   : 'text-gray-400 border-transparent hover:bg-gray-100 hover:text-gray-600'
@@ -277,7 +277,7 @@ export const Navbar: React.FC<Props> = ({
             <button
               onClick={onOpenProfile}
               title="Meu Cadastro: Alterar Foto, E-mail, Função e Telefone"
-              className="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-100 rounded-xl transition-all cursor-pointer border border-gray-200/60 hover:border-gray-300"
+              className="flex items-center gap-1.5 p-1 sm:px-2 sm:py-1 hover:bg-gray-100 rounded-xl transition-all cursor-pointer border border-gray-200/60 hover:border-gray-300"
             >
               <div className="w-6 h-6 rounded-full overflow-hidden border border-gray-300 bg-white flex items-center justify-center font-bold text-gray-700 text-[9px] shadow-2xs">
                 {currentUser.avatarUrl ? (
@@ -302,14 +302,14 @@ export const Navbar: React.FC<Props> = ({
                 type="button"
                 onClick={onOpenChangePassword}
                 title="Trocar Minha Senha de Acesso"
-                className="p-1.5 text-gray-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-blue-200"
+                className="hidden md:inline-flex p-1.5 text-gray-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-blue-200"
               >
                 <KeyRound className="w-4 h-4" />
               </button>
             )}
 
             {/* User Switcher Dropdown (Allows testing each coordinator role seamlessly) */}
-            <div className="flex items-center gap-1.5 pl-1.5 border-l border-gray-200">
+            <div className="flex items-center gap-1.5 pl-1 sm:pl-1.5 border-l border-gray-200">
               <select
                 aria-label="Alternar perfil do usuário ativo"
                 value={currentUser.id}
@@ -317,7 +317,7 @@ export const Navbar: React.FC<Props> = ({
                   const u = availableUsers.find((user) => user.id === e.target.value);
                   if (u) onSelectUser(u);
                 }}
-                className="text-xs font-bold text-gray-800 bg-gray-50/80 hover:bg-gray-100 border border-gray-300 rounded-xl py-1.5 px-2.5 focus:ring-1 focus:ring-blue-500 focus:outline-none max-w-[140px] sm:max-w-[190px] truncate cursor-pointer transition-colors"
+                className="text-xs font-bold text-gray-800 bg-gray-50/80 hover:bg-gray-100 border border-gray-300 rounded-xl py-1.5 px-2 focus:ring-1 focus:ring-blue-500 focus:outline-none max-w-[100px] xs:max-w-[130px] sm:max-w-[190px] truncate cursor-pointer transition-colors"
               >
                 {availableUsers.map((u) => (
                   <option key={u.id} value={u.id}>

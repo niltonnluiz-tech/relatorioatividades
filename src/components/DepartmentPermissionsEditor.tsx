@@ -263,8 +263,8 @@ export const DepartmentPermissionsEditor: React.FC<Props> = ({
 
         {/* Tabela de Setores com os Checkboxes Acessar e Visualizar */}
         <div className="border border-gray-200 rounded-xl overflow-hidden">
-          <div className="max-h-72 overflow-y-auto">
-            <table className="w-full text-left text-xs border-collapse">
+          <div className="max-h-72 overflow-y-auto overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse min-w-[340px]">
               <thead className="bg-gray-100/80 sticky top-0 z-10 border-b border-gray-200">
                 <tr>
                   <th className="py-2.5 px-3 font-black text-gray-700 text-xs">Departamento / Setor Oficial</th>

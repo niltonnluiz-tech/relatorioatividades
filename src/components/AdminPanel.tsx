@@ -168,15 +168,15 @@ export const AdminPanel: React.FC<Props> = ({
   return (
     <div id="admin-panel-container" className="space-y-6 max-w-6xl mx-auto">
       {/* Top Banner */}
-      <div className="bg-[#0B0F19] text-white rounded-2xl p-6 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 border border-gray-800">
+      <div className="bg-[#0B0F19] text-white rounded-2xl p-4 sm:p-6 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 border border-gray-800">
         <div>
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-blue-600/30 text-blue-400 rounded-xl">
               <Lock className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-2xl font-black tracking-tight">Painel Administrativo & Segurança</h2>
-              <span className="text-xs text-blue-400 font-mono">
+              <h2 className="text-lg sm:text-xl md:text-2xl font-black tracking-tight">Painel Administrativo & Segurança</h2>
+              <span className="text-[11px] sm:text-xs text-blue-400 font-mono">
                 CAMP Piero Pollone • Módulo de Governança & LGPD
               </span>
             </div>
@@ -216,7 +216,7 @@ export const AdminPanel: React.FC<Props> = ({
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 overflow-x-auto gap-2">
+      <div className="flex border-b border-gray-200 overflow-x-auto gap-2 pb-1 scrollbar-thin scroll-smooth">
         <button
           onClick={() => setActiveTab('users')}
           className={`px-4 py-2.5 text-xs md:text-sm font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${

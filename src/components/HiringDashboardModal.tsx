@@ -105,16 +105,16 @@ export const HiringDashboardModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs">
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden border border-gray-200 animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
-        <div className="bg-[#0B0F19] text-white p-5 flex items-center justify-between">
+        <div className="bg-[#0B0F19] text-white p-4 sm:p-5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-600/30 text-blue-400 rounded-lg">
               <BarChart3 className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-lg leading-tight">
+              <h3 className="font-bold text-base sm:text-lg leading-tight">
                 Cadastro de Dados do Dashboard de Contratações
               </h3>
               <p className="text-xs text-gray-400">
@@ -130,7 +130,7 @@ export const HiringDashboardModal: React.FC<Props> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="p-6 space-y-6 max-h-[82vh] overflow-y-auto">
+        <form onSubmit={handleSave} className="p-4 sm:p-6 space-y-4 sm:space-y-6 max-h-[82vh] overflow-y-auto">
           {saveSuccess && (
             <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600" />

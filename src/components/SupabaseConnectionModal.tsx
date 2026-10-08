@@ -140,21 +140,21 @@ export function SupabaseConnectionModal({
   const isConfigured = Boolean(url && anonKey);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col border border-gray-200 overflow-hidden">
         {/* Header */}
-        <div className="bg-[#0B0F19] text-white px-6 py-4.5 flex items-center justify-between shrink-0">
+        <div className="bg-[#0B0F19] text-white px-4 sm:px-6 py-3.5 sm:py-4.5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400 shadow-xs">
               <Database className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base font-black tracking-tight text-white">
+                <h3 className="text-sm sm:text-base font-black tracking-tight text-white">
                   Conexão com o Supabase
                 </h3>
                 <span
-                  className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                  className={`text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
                     isConfigured
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
                       : 'bg-gray-700 text-gray-300 border-gray-600'
@@ -163,7 +163,7 @@ export function SupabaseConnectionModal({
                   {isConfigured ? 'Credenciais Definidas' : 'Modo SQLite Local'}
                 </span>
               </div>
-              <p className="text-xs text-gray-400">
+              <p className="text-[11px] sm:text-xs text-gray-400">
                 Integração direta com PostgreSQL na Nuvem Supabase
               </p>
             </div>
@@ -177,7 +177,7 @@ export function SupabaseConnectionModal({
         </div>
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto space-y-6 text-sm text-gray-700 divide-y divide-gray-100">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-4 sm:space-y-6 text-sm text-gray-700 divide-y divide-gray-100">
           {/* Step 1: Tutorial Card */}
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-xs font-black text-emerald-800 uppercase tracking-wider">

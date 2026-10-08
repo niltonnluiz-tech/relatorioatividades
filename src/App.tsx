@@ -198,7 +198,7 @@ export function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
         {/* VIEW 1: USER PORTAL (Exclusive area for monthly activity input) */}
         {activeView === 'portal' && (
           <UserPortal
@@ -241,9 +241,9 @@ export function App() {
           ) : (
             <div className="space-y-6">
               {/* Header controls for preview */}
-              <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 max-w-4xl mx-auto">
-                <div className="flex items-center gap-3">
-                  <span className="font-bold text-sm text-gray-900">Navegação do Relatório:</span>
+              <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 max-w-4xl mx-auto">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <span className="font-bold text-xs sm:text-sm text-gray-900">Navegação do Relatório:</span>
                   <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 text-xs">
                     <button
                       disabled={previewPage <= 1}
@@ -256,7 +256,7 @@ export function App() {
                       aria-label="Página do relatório"
                       value={previewPage}
                       onChange={(e) => setPreviewPage(Number(e.target.value))}
-                      className="bg-transparent font-bold text-gray-900 border-none focus:outline-none cursor-pointer text-xs"
+                      className="bg-transparent font-bold text-gray-900 border-none focus:outline-none cursor-pointer text-xs max-w-[170px] sm:max-w-none truncate"
                     >
                       {Array.from({ length: 15 }, (_, i) => i + 1).map((p) => (
                         <option key={p} value={p}>
@@ -275,7 +275,7 @@ export function App() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => setIsMonthModalOpen(true)}
                     className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-blue-200 transition-colors"

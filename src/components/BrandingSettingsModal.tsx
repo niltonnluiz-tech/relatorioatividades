@@ -134,33 +134,33 @@ export const BrandingSettingsModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in">
       <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 max-h-[92vh]">
         {/* Header */}
-        <div className="p-5 border-b border-gray-200 flex items-center justify-between bg-gray-50 flex-shrink-0">
+        <div className="p-4 sm:p-5 border-b border-gray-200 flex items-center justify-between bg-gray-50 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-blue-100 text-blue-800 rounded-xl">
               <ImageIcon className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-black text-gray-900">
+              <h2 className="text-base sm:text-lg font-black text-gray-900 leading-tight">
                 Upload & Gestão de Logotipos do Relatório
               </h2>
-              <p className="text-xs text-gray-500">
+              <p className="text-[11px] sm:text-xs text-gray-500">
                 Personalize as imagens de todos os logotipos e selos oficiais do relatório de 15 páginas
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+            className="p-1.5 sm:p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Filters */}
-        <div className="px-6 pt-3 pb-2 bg-white border-b border-gray-100 flex items-center gap-2 flex-shrink-0 overflow-x-auto">
+        <div className="px-4 sm:px-6 pt-3 pb-2 bg-white border-b border-gray-100 flex items-center gap-2 flex-shrink-0 overflow-x-auto">
           <button
             type="button"
             onClick={() => setActiveTab('all')}
