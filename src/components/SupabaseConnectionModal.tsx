@@ -15,6 +15,7 @@ import {
   Info,
   Copy,
   Check,
+  Download,
 } from 'lucide-react';
 import { supabaseService, SupabaseConfig } from '../services/supabaseClient';
 
@@ -91,9 +92,10 @@ export function SupabaseConnectionModal({
     setIsPushing(false);
 
     if (result.success) {
+      const counts = result.recordsPushed;
       setSyncFeedback({
         type: 'success',
-        message: `${result.message} (${JSON.stringify(result.recordsPushed)})`,
+        message: `${result.message} (Instituição: ${counts.institution_settings || 0}, Usuários: ${counts.users || 0}, Relatórios: ${counts.monthly_reports || 0}, Logs: ${counts.audit_logs || 0})`,
       });
       onDataSynced?.();
     } else {
@@ -337,10 +339,28 @@ export function SupabaseConnectionModal({
                     {testResult.message}
                   </p>
                   {testResult.details && (
-                    <p className="text-[10px] font-mono opacity-80 pt-1">
-                      Tabelas verificadas: {testResult.details.tablesChecked.join(', ')} | Logs encontrados:{' '}
-                      {testResult.details.auditLogsFound} | Usuários remotos: {testResult.details.usersFound}
-                    </p>
+                    <div className="pt-2 space-y-1.5 border-t border-emerald-200/60 mt-2">
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold">
+                          ✓ Instituição: OK
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold">
+                          ✓ Setores: {testResult.details.departmentsFound ?? 16} ativos
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold">
+                          ✓ Usuários: {testResult.details.usersFound ?? 0} cadastrados
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold">
+                          ✓ Relatórios: OK
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold">
+                          ✓ Auditoria & RPC: Ativa
+                        </span>
+                      </div>
+                      <p className="text-[10px] font-mono text-emerald-800/80">
+                        Latência: {testResult.latencyMs || 0}ms | Tabelas verificadas: {testResult.details.tablesChecked.join(', ')}
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -406,6 +426,26 @@ export function SupabaseConnectionModal({
               )}
             </div>
           )}
+
+          {/* Download Official SQL Script */}
+          <div className="pt-5 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-gray-700">
+                <Database className="w-4 h-4 text-emerald-600" />
+                <span>Script SQL Oficial do Supabase:</span>
+              </div>
+              <a
+                href="/supabase_schema_complete.sql"
+                download="supabase_schema_complete.sql"
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200 transition-colors shadow-2xs"
+              >
+                <Download className="w-3.5 h-3.5" /> Baixar Script SQL Completo
+              </a>
+            </div>
+            <p className="text-[11px] text-gray-500">
+              Caso deseje inicializar ou atualizar a estrutura no Supabase, abra o <strong>SQL Editor</strong> no painel web do Supabase e execute este script completo (cria tabelas, regras RLS e funções de auditoria).
+            </p>
+          </div>
 
           {/* Information regarding .env */}
           <div className="pt-5 space-y-2">

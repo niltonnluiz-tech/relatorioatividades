@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { DepartmentId, MetricItem, MonthlyReport, User } from '../types';
 import { sqlDb } from '../services/sqlDb';
 import { offlineSync } from '../services/offlineSync';
+import { supabaseService } from '../services/supabaseClient';
 import { 
   Check, 
   Plus, 
@@ -64,13 +65,24 @@ export const UserPortal: React.FC<Props> = ({
   const isAdmin = currentUser.role === 'admin';
   const allowedDepts = getAllowedDepartmentsForUser(currentUser);
 
-  // Initial department: if admin 'rh', otherwise user's own department or first allowed department
-  const defaultInitialDept: DepartmentId = isAdmin 
-    ? 'rh' 
-    : (allowedDepts.find(d => d.id === currentUser.departmentId)?.id || allowedDepts[0]?.id || currentUser.departmentId);
+  // Initial department: Always prioritizes user's own department (e.g. coordenador_administrativo)
+  const defaultInitialDept: DepartmentId = (
+    currentUser.departmentId && OFFICIAL_SECTORS.some(s => s.id === currentUser.departmentId)
+      ? currentUser.departmentId
+      : (isAdmin ? 'coordenador_administrativo' : (allowedDepts.find(d => d.id === currentUser.departmentId)?.id || allowedDepts[0]?.id || 'coordenador_administrativo'))
+  );
 
   const [selectedDeptId, setSelectedDeptId] = useState<DepartmentId>(defaultInitialDept);
   const [deptSortOrder, setDeptSortOrder] = useState<'asc' | 'desc'>('asc'); // Padrão: Crescente
+
+  // Automatically sync active department when currentUser changes (e.g., on login or profile update)
+  React.useEffect(() => {
+    if (currentUser?.departmentId && OFFICIAL_SECTORS.some(s => s.id === currentUser.departmentId)) {
+      setSelectedDeptId(currentUser.departmentId);
+    } else if (isAdmin) {
+      setSelectedDeptId('coordenador_administrativo');
+    }
+  }, [currentUser?.id, currentUser?.departmentId, isAdmin]);
 
   // Active department key
   const activeDeptKey: DepartmentId = isAdmin 
@@ -82,13 +94,13 @@ export const UserPortal: React.FC<Props> = ({
   const isReadOnly = !canAccessActiveDept && canViewActiveDept;
   const isAccessDenied = !canAccessActiveDept && !canViewActiveDept;
 
-  const activeDept = currentReport.departments[activeDeptKey] || currentReport.departments.rh;
+  const activeDept = currentReport.departments[activeDeptKey] || currentReport.departments.coordenador_administrativo;
 
   // Local state for editing
-  const [metrics, setMetrics] = useState<MetricItem[]>(activeDept?.metrics || []);
-  const [subMetrics, setSubMetrics] = useState(activeDept?.subMetrics || []);
-  const [bulletActivities, setBulletActivities] = useState<string[]>(activeDept?.bulletActivities || []);
-  const [subBulletSections, setSubBulletSections] = useState(activeDept?.subBulletSections || []);
+  const [metrics, setMetrics] = useState<MetricItem[]>(activeDept?.metrics ? [...activeDept.metrics] : []);
+  const [subMetrics, setSubMetrics] = useState(activeDept?.subMetrics ? JSON.parse(JSON.stringify(activeDept.subMetrics)) : []);
+  const [bulletActivities, setBulletActivities] = useState<string[]>(activeDept?.bulletActivities ? [...activeDept.bulletActivities] : []);
+  const [subBulletSections, setSubBulletSections] = useState(activeDept?.subBulletSections ? JSON.parse(JSON.stringify(activeDept.subBulletSections)) : []);
   const [customNotes, setCustomNotes] = useState(activeDept?.customNotes || '');
   const [status, setStatus] = useState(activeDept?.status || 'rascunho');
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
@@ -115,14 +127,21 @@ export const UserPortal: React.FC<Props> = ({
   // Sync state whenever activeDeptKey changes
   React.useEffect(() => {
     setSectorDescription(getSectorDescription(activeDeptKey));
-    const dept = currentReport.departments[activeDeptKey];
+    const dept = currentReport.departments[activeDeptKey] || (INITIAL_MONTHLY_REPORT.departments as any)[activeDeptKey];
     if (dept) {
-      setMetrics(dept.metrics || []);
-      setSubMetrics(dept.subMetrics || []);
-      setBulletActivities(dept.bulletActivities || []);
-      setSubBulletSections(dept.subBulletSections || []);
+      setMetrics(dept.metrics ? [...dept.metrics] : []);
+      setSubMetrics(dept.subMetrics ? JSON.parse(JSON.stringify(dept.subMetrics)) : []);
+      setBulletActivities(dept.bulletActivities ? [...dept.bulletActivities] : []);
+      setSubBulletSections(dept.subBulletSections ? JSON.parse(JSON.stringify(dept.subBulletSections)) : []);
       setCustomNotes(dept.customNotes || '');
-      setStatus(dept.status);
+      setStatus(dept.status || 'rascunho');
+    } else {
+      setMetrics([]);
+      setSubMetrics([]);
+      setBulletActivities([]);
+      setSubBulletSections([]);
+      setCustomNotes('');
+      setStatus('rascunho');
     }
   }, [activeDeptKey, currentReport]);
 
@@ -131,6 +150,9 @@ export const UserPortal: React.FC<Props> = ({
     await sqlDb.updateSectorDescription(activeDeptKey, editDescInput.trim(), currentUser);
     setSectorDescription(editDescInput.trim());
     setIsEditDescModalOpen(false);
+    if (supabaseService.isConfigured() && supabaseService.getConfig().autoSync) {
+      supabaseService.pushLocalDataToSupabase().catch(() => {});
+    }
     setSaveFeedback(`Descrição do setor "${getSectorName(activeDeptKey)}" atualizada com sucesso!`);
     setTimeout(() => setSaveFeedback(null), 4000);
   };
@@ -157,6 +179,9 @@ export const UserPortal: React.FC<Props> = ({
         setMetrics([]);
         setSubMetrics([]);
       }
+      if (supabaseService.isConfigured() && supabaseService.getConfig().autoSync) {
+        supabaseService.pushLocalDataToSupabase().catch(() => {});
+      }
       onReportUpdated(updated);
       setSaveFeedback('Itens limpos e persistidos com sucesso no banco de dados!');
       setTimeout(() => setSaveFeedback(null), 4000);
@@ -178,10 +203,10 @@ export const UserPortal: React.FC<Props> = ({
         currentReport.id,
         activeDeptKey,
         {
-          metrics,
-          subMetrics,
-          bulletActivities,
-          subBulletSections,
+          metrics: [...metrics],
+          subMetrics: JSON.parse(JSON.stringify(subMetrics)),
+          bulletActivities: [...bulletActivities],
+          subBulletSections: JSON.parse(JSON.stringify(subBulletSections)),
           customNotes,
           status,
         },
@@ -196,8 +221,15 @@ export const UserPortal: React.FC<Props> = ({
         });
       }
 
-      onReportUpdated(updated);
-      setSaveFeedback('Dados salvos e auditados com sucesso no banco de dados SQL seguro.');
+      // Background sync to Supabase if configured
+      if (supabaseService.isConfigured() && supabaseService.getConfig().autoSync) {
+        supabaseService.pushLocalDataToSupabase().catch((err) => {
+          console.warn('Sync em segundo plano para Supabase:', err);
+        });
+      }
+
+      onReportUpdated({ ...updated, departments: { ...updated.departments } });
+      setSaveFeedback('Dados salvos, auditados e sincronizados com sucesso no banco de dados!');
       setTimeout(() => setSaveFeedback(null), 3500);
     } catch (e: any) {
       setSaveFeedback(`Erro ao salvar: ${e.message || 'Falha inesperada'}`);

@@ -4,13 +4,15 @@
  * Includes file drag-and-drop/upload for profile photo, avatar presets, and instant preview.
  */
 import React, { useState, useRef } from 'react';
-import { User } from '../types';
+import { User, DepartmentId } from '../types';
 import { sqlDb } from '../services/sqlDb';
 import { supabaseService } from '../services/supabaseClient';
+import { OFFICIAL_SECTORS } from '../constants/sectors';
 import { 
   User as UserIcon, 
   Mail, 
   Briefcase, 
+  Building,
   Phone, 
   Camera, 
   Upload, 
@@ -51,6 +53,7 @@ export const UserProfileModal: React.FC<Props> = ({
   const [name, setName] = useState(currentUser.name);
   const [email, setEmail] = useState(currentUser.email);
   const [position, setPosition] = useState(currentUser.position);
+  const [departmentId, setDepartmentId] = useState<DepartmentId>(currentUser.departmentId);
   const [phone, setPhone] = useState(currentUser.phone);
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatarUrl || '');
   const [isSaving, setIsSaving] = useState(false);
@@ -69,6 +72,7 @@ export const UserProfileModal: React.FC<Props> = ({
       setName(currentUser.name);
       setEmail(currentUser.email);
       setPosition(currentUser.position);
+      setDepartmentId(currentUser.departmentId);
       setPhone(currentUser.phone);
       setAvatarUrl(currentUser.avatarUrl || '');
       setFeedback(null);
@@ -110,16 +114,27 @@ export const UserProfileModal: React.FC<Props> = ({
 
     setIsSaving(true);
     try {
+      const selectedSector = OFFICIAL_SECTORS.find((s) => s.id === departmentId);
+      const departmentName = selectedSector ? selectedSector.name : currentUser.departmentName;
+
       const updated = await sqlDb.updateUserProfile(currentUser.id, {
         name: name.trim(),
         email: email.trim(),
         position: position.trim(),
         phone: phone.trim(),
         avatarUrl: avatarUrl.trim(),
+        departmentId,
+        departmentName,
       });
 
+      // Synchronize directly with Supabase if configured
+      if (supabaseService.isConfigured()) {
+        await supabaseService.syncUser(updated).catch(() => {});
+        await supabaseService.pushLocalDataToSupabase().catch(() => {});
+      }
+
       onUserUpdated(updated);
-      setFeedback('Informações cadastrais e dados do coordenador no relatório atualizados!');
+      setFeedback('Informações cadastrais e dados do coordenador no relatório atualizados com sucesso!');
       setTimeout(() => {
         onClose();
       }, 1200);
@@ -406,15 +421,35 @@ export const UserProfileModal: React.FC<Props> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1">Departamento de Lotação</label>
-              <input
-                type="text"
-                disabled
-                value={currentUser.departmentName}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-gray-500 bg-gray-100 font-semibold cursor-not-allowed"
-              />
+              <label className="block text-xs font-bold text-gray-700 mb-1 flex items-center justify-between">
+                <span>Departamento / Setor de Lotação</span>
+                <span className="text-[10px] text-blue-600 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                  Definir Meu Setor
+                </span>
+              </label>
+              <div className="relative">
+                <Building className="w-4 h-4 text-gray-400 absolute left-3 top-2.5 pointer-events-none" />
+                <select
+                  value={departmentId}
+                  onChange={(e) => {
+                    const newDept = e.target.value as DepartmentId;
+                    setDepartmentId(newDept);
+                    const sec = OFFICIAL_SECTORS.find((s) => s.id === newDept);
+                    if (sec && (!position || position === 'Coordenador(a)' || position.includes('Coordenador'))) {
+                      setPosition(sec.defaultPosition);
+                    }
+                  }}
+                  className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium cursor-pointer"
+                >
+                  {OFFICIAL_SECTORS.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <span className="text-[10px] text-gray-500 mt-1 block">
-                * A alteração de setor/área exclusiva pode ser realizada pelo Administrador.
+                Define o seu setor padrão ao logar no portal e os dados oficiais no relatório gerencial.
               </span>
             </div>
 

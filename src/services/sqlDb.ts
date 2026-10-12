@@ -159,18 +159,40 @@ class SqlDatabaseService {
       this.persistUsers();
     }
 
-    // Ensure any legacy 'admin' or 'Administração' department is migrated to 'ti' / 'Tecnologia (TI)'
-    // and ensure all users have department & report permissions properly populated
+    // Ensure Nilton Luiz (user_admin) is in Coordenador Administrativo per requirement
+    // and ensure user_coord_admin exists in user pool
     let usersMigrated = false;
+    const hasCoordAdmin = this.users.some((u) => u.id === 'user_coord_admin');
+    if (!hasCoordAdmin) {
+      const coordAdminUser = INITIAL_USERS.find((u) => u.id === 'user_coord_admin');
+      if (coordAdminUser) {
+        this.users.push({ ...coordAdminUser });
+        usersMigrated = true;
+      }
+    }
+
     this.users = this.users.map((u) => {
       let updatedUser = { ...u };
-      if (u.departmentId === 'admin' || (u.departmentName && u.departmentName.includes('Administração &'))) {
+      // User Nilton Luiz (user_admin) or any admin user officially belongs to Coordenador Administrativo
+      if (u.id === 'user_admin' || u.email === 'niltonnluiz@gmail.com' || u.role === 'admin') {
+        if (updatedUser.departmentId !== 'coordenador_administrativo' || updatedUser.departmentName !== 'Coordenador Administrativo') {
+          usersMigrated = true;
+          updatedUser = {
+            ...updatedUser,
+            departmentId: 'coordenador_administrativo',
+            departmentName: 'Coordenador Administrativo',
+            position: (!updatedUser.position || updatedUser.position.includes('TI') || updatedUser.position === 'Administrador do Sistema')
+              ? 'Coordenador Administrativo'
+              : updatedUser.position,
+          };
+        }
+      } else if (u.departmentId === 'admin') {
         usersMigrated = true;
         updatedUser = {
           ...updatedUser,
-          departmentId: 'ti',
-          departmentName: 'Tecnologia (TI)',
-          position: u.role === 'admin' ? 'Administrador do Sistema / TI' : (u.position || 'Coordenador(a) de Tecnologia (TI)'),
+          departmentId: 'coordenador_administrativo',
+          departmentName: 'Coordenador Administrativo',
+          position: u.position || 'Coordenador Administrativo',
         };
       }
       // Remove any legacy default passwords ('camp2026' or 'camp1234')
@@ -227,9 +249,19 @@ class SqlDatabaseService {
           rep.departments.ensino.coordinatorAvatar = '';
           reportsUpdated = true;
         }
-        // Ensure newly registered departments exist from INITIAL_MONTHLY_REPORT
-        const initialDepts = INITIAL_MONTHLY_REPORT.departments;
-        if (!rep.departments.coordenador_administrativo && initialDepts.coordenador_administrativo) {
+        if (rep.departments.coordenador_administrativo) {
+          if (
+            rep.departments.coordenador_administrativo.coordinatorName === 'Coordenação Administrativa' ||
+            !rep.departments.coordenador_administrativo.coordinatorName
+          ) {
+            rep.departments.coordenador_administrativo.coordinatorName = 'Nilton Luiz';
+            rep.departments.coordenador_administrativo.coordinatorEmail = 'niltonnluiz@gmail.com';
+            rep.departments.coordenador_administrativo.coordinatorTitle = 'Coordenador Administrativo';
+            rep.departments.coordenador_administrativo.coordinatorAvatar =
+              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+            reportsUpdated = true;
+          }
+        } else if (initialDepts.coordenador_administrativo) {
           rep.departments.coordenador_administrativo = initialDepts.coordenador_administrativo;
           reportsUpdated = true;
         }
@@ -472,12 +504,13 @@ class SqlDatabaseService {
   }
 
   public getCurrentReport(): MonthlyReport {
-    return this.getReport(this.getActiveReportId());
+    const rep = this.getReport(this.getActiveReportId());
+    return { ...rep, departments: { ...rep.departments } };
   }
 
   public getAllReports(): MonthlyReport[] {
     this.init();
-    return Object.values(this.memoryReports);
+    return Object.values(this.memoryReports).map(rep => ({ ...rep, departments: { ...rep.departments } }));
   }
 
   public async updateDepartmentData(
@@ -488,10 +521,24 @@ class SqlDatabaseService {
   ): Promise<MonthlyReport> {
     this.init();
     const report = this.getReport(reportId);
-    const existingDept = report.departments[departmentId as keyof typeof report.departments];
+    let existingDept = report.departments[departmentId as keyof typeof report.departments];
 
     if (!existingDept) {
-      throw new Error(`Departamento ${departmentId} não encontrado.`);
+      const fallback = (INITIAL_MONTHLY_REPORT.departments as any)[departmentId] || {
+        departmentId: departmentId as any,
+        coordinatorName: currentUser.name,
+        coordinatorTitle: currentUser.position,
+        coordinatorPhone: currentUser.phone,
+        coordinatorEmail: currentUser.email,
+        coordinatorAvatar: currentUser.avatarUrl || '',
+        status: 'rascunho',
+        lastModified: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        modifiedBy: currentUser.name,
+        metrics: [],
+        bulletActivities: [],
+      };
+      (report.departments as any)[departmentId] = fallback;
+      existingDept = (report.departments as any)[departmentId];
     }
 
     report.departments[departmentId as keyof typeof report.departments] = {
@@ -516,7 +563,7 @@ class SqlDatabaseService {
       userAgent: navigator.userAgent,
     });
 
-    return report;
+    return { ...report, departments: { ...report.departments } };
   }
 
   public async clearDepartmentItems(
@@ -578,7 +625,7 @@ class SqlDatabaseService {
       userAgent: navigator.userAgent,
     });
 
-    return report;
+    return { ...report, departments: { ...report.departments } };
   }
 
   public getSectorDescription(departmentId: string): string {
@@ -616,7 +663,7 @@ class SqlDatabaseService {
 
   public getUsers(): User[] {
     this.init();
-    return this.users;
+    return this.users.map(u => ({ ...u }));
   }
 
   public updateUser(user: User) {
@@ -648,7 +695,23 @@ class SqlDatabaseService {
     if (updatedUser.departmentId && updatedUser.departmentId !== 'admin') {
       const deptKey = updatedUser.departmentId as keyof MonthlyReport['departments'];
       Object.values(this.memoryReports).forEach((rep) => {
-        if (rep.departments && rep.departments[deptKey]) {
+        if (rep.departments) {
+          if (!rep.departments[deptKey]) {
+            const fallback = (INITIAL_MONTHLY_REPORT.departments as any)[deptKey] || {
+              departmentId: deptKey,
+              coordinatorName: updatedUser.name,
+              coordinatorTitle: updatedUser.position,
+              coordinatorPhone: updatedUser.phone,
+              coordinatorEmail: updatedUser.email,
+              coordinatorAvatar: updatedUser.avatarUrl || '',
+              status: 'rascunho',
+              lastModified: new Date().toISOString().replace('T', ' ').substring(0, 19),
+              modifiedBy: updatedUser.name,
+              metrics: [],
+              bulletActivities: [],
+            };
+            (rep.departments as any)[deptKey] = fallback;
+          }
           rep.departments[deptKey] = {
             ...rep.departments[deptKey],
             coordinatorName: updatedUser.name,
@@ -663,6 +726,13 @@ class SqlDatabaseService {
       });
       this.persistReports();
     }
+
+    // Trigger asynchronous sync to Supabase if connected
+    import('./supabaseClient')
+      .then(({ supabaseService }) => {
+        supabaseService.syncUser(updatedUser).catch(() => {});
+      })
+      .catch(() => {});
 
     // Register tamper-evident audit trail for profile update
     await this.addAuditLog({

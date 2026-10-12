@@ -28,8 +28,11 @@ export function App() {
   const [users, setUsers] = useState<User[]>(sqlDb.getUsers());
   const [currentUser, setCurrentUser] = useState<User>(() => {
     const savedUserId = localStorage.getItem('CAMP_AUTH_USER_ID');
-    const existing = sqlDb.getUsers().find((u) => u.id === savedUserId);
-    return existing || sqlDb.getUsers()[0] || INITIAL_USERS[0];
+    const allUsers = sqlDb.getUsers();
+    const existing = allUsers.find((u) => u.id === savedUserId);
+    const preferredCoordAdmin = allUsers.find((u) => u.id === 'user_admin' || u.email === 'niltonnluiz@gmail.com')
+      || allUsers.find((u) => u.departmentId === 'coordenador_administrativo');
+    return existing || preferredCoordAdmin || allUsers[0] || INITIAL_USERS[0];
   });
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return localStorage.getItem('CAMP_IS_AUTHENTICATED') === 'true';
@@ -65,21 +68,24 @@ export function App() {
   }, []);
 
   const refreshData = () => {
-    setCurrentReport(sqlDb.getCurrentReport());
-    setAuditLogs(sqlDb.getAuditLogs());
+    const rep = sqlDb.getCurrentReport();
+    setCurrentReport({ ...rep, departments: { ...rep.departments } });
+    setAuditLogs([...sqlDb.getAuditLogs()]);
     setUsers(sqlDb.getUsers());
   };
 
   const handleUserUpdated = (updatedUser: User) => {
-    setCurrentUser(updatedUser);
+    setCurrentUser({ ...updatedUser });
     setUsers(sqlDb.getUsers());
-    setCurrentReport(sqlDb.getCurrentReport());
-    setAuditLogs(sqlDb.getAuditLogs());
+    const rep = sqlDb.getCurrentReport();
+    setCurrentReport({ ...rep, departments: { ...rep.departments } });
+    setAuditLogs([...sqlDb.getAuditLogs()]);
   };
 
   const handleSelectUser = (user: User) => {
-    setCurrentUser(user);
+    setCurrentUser({ ...user });
     localStorage.setItem('CAMP_AUTH_USER_ID', user.id);
+    localStorage.setItem('CAMP_LAST_LOGGED_IN_USER_ID', user.id);
     // Log user switch in audit trail
     sqlDb.addAuditLog({
       userId: user.id,
@@ -90,15 +96,16 @@ export function App() {
       ipAddress: '192.168.1.100',
       userAgent: navigator.userAgent,
     });
-    setAuditLogs(sqlDb.getAuditLogs());
+    setAuditLogs([...sqlDb.getAuditLogs()]);
   };
 
   const handleLoginSuccess = (user: User) => {
-    setCurrentUser(user);
+    setCurrentUser({ ...user });
     setIsAuthenticated(true);
     setUsers(sqlDb.getUsers());
-    setCurrentReport(sqlDb.getCurrentReport());
-    setAuditLogs(sqlDb.getAuditLogs());
+    const rep = sqlDb.getCurrentReport();
+    setCurrentReport({ ...rep, departments: { ...rep.departments } });
+    setAuditLogs([...sqlDb.getAuditLogs()]);
   };
 
   const handleLogout = () => {
@@ -192,8 +199,8 @@ export function App() {
             currentUser={currentUser}
             currentReport={currentReport}
             onReportUpdated={(updated) => {
-              setCurrentReport(updated);
-              setAuditLogs(sqlDb.getAuditLogs());
+              setCurrentReport({ ...updated, departments: { ...updated.departments } });
+              setAuditLogs([...sqlDb.getAuditLogs()]);
             }}
             encryptionUnlocked={encryptionUnlocked}
             onOpenEncryptionModal={() => setIsE2EOpen(true)}

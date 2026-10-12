@@ -814,6 +814,85 @@ BEGIN
 END;
 $$;
 
+-- 6.6 ATUALIZAÇÃO SEGURA DE PERFIL DE USUÁRIO (RPC COM SECURITY DEFINER)
+CREATE OR REPLACE FUNCTION public.rpc_update_user_profile(
+    p_user_id TEXT,
+    p_name TEXT,
+    p_email TEXT,
+    p_phone TEXT,
+    p_position TEXT,
+    p_department_id TEXT,
+    p_department_name TEXT,
+    p_avatar_url TEXT DEFAULT ''
+)
+RETURNS JSONB
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, extensions, auth, pg_temp
+AS $$
+BEGIN
+    UPDATE public.users
+    SET name = coalesce(nullif(trim(p_name), ''), name),
+        email = coalesce(nullif(trim(p_email), ''), email),
+        phone = coalesce(nullif(trim(p_phone), ''), phone),
+        position = coalesce(nullif(trim(p_position), ''), position),
+        department_id = coalesce(nullif(trim(p_department_id), ''), department_id),
+        department_name = coalesce(nullif(trim(p_department_name), ''), department_name),
+        avatar_url = coalesce(p_avatar_url, avatar_url),
+        updated_at = NOW()
+    WHERE id = p_user_id;
+
+    PERFORM public.record_audit_log(
+        p_user_id,
+        p_name,
+        p_department_id,
+        'USER_PROFILE_UPDATE',
+        'Atualização de dados cadastrais executada com sucesso via RPC'
+    );
+
+    RETURN jsonb_build_object('success', true, 'message', 'Perfil atualizado com sucesso no Supabase.');
+END;
+$$;
+
+-- 6.7 SALVAMENTO DE RELATÓRIO MENSAL (RPC COM SECURITY DEFINER)
+CREATE OR REPLACE FUNCTION public.rpc_save_monthly_report(
+    p_report_id TEXT,
+    p_month INT,
+    p_year INT,
+    p_month_name TEXT,
+    p_full_title TEXT,
+    p_status TEXT,
+    p_hiring_dashboard JSONB,
+    p_hiring_history JSONB,
+    p_financial_highlights JSONB,
+    p_user_id TEXT DEFAULT 'system'
+)
+RETURNS JSONB
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, extensions, auth, pg_temp
+AS $$
+BEGIN
+    INSERT INTO public.monthly_reports (
+        id, month, year, month_name, full_title, status,
+        hiring_dashboard, hiring_history, financial_highlights, updated_at
+    ) VALUES (
+        p_report_id, p_month, p_year, p_month_name, p_full_title, p_status::report_status_enum,
+        p_hiring_dashboard, p_hiring_history, p_financial_highlights, NOW()
+    )
+    ON CONFLICT (id) DO UPDATE SET
+        month = EXCLUDED.month,
+        year = EXCLUDED.year,
+        month_name = EXCLUDED.month_name,
+        full_title = EXCLUDED.full_title,
+        status = EXCLUDED.status,
+        hiring_dashboard = EXCLUDED.hiring_dashboard,
+        hiring_history = EXCLUDED.hiring_history,
+        financial_highlights = EXCLUDED.financial_highlights,
+        updated_at = NOW();
+
+    RETURN jsonb_build_object('success', true, 'message', 'Relatório salvo com sucesso no Supabase.');
+END;
+$$;
+
 -- ========================================================================================
 -- 7. CONFIGURAÇÃO DE ROW LEVEL SECURITY (RLS) IMPENETRÁVEL
 --    IMPEDE ACESSO PELO INSPECIONAR / CONSOLE DO NAVEGADOR
@@ -1040,20 +1119,24 @@ USING (public.is_admin());
 
 -- 8.1 Inserir Departamentos Oficiais
 INSERT INTO public.departments (id, name, description, order_index) VALUES
-('ti', 'Tecnologia (TI)', 'Infraestrutura de Redes, Suporte Técnico, Softwares & Governança Digital', 1),
-('rh', 'Gestão de Pessoas (RH)', 'Recrutamento, Seleção, Treinamento, Benefícios e Clima Organizacional', 2),
-('financeiro', 'Financeiro', 'Contas a Pagar, Contas a Receber, Fluxo de Caixa e Prestação de Contas', 3),
-('captacao', 'Captação de Recursos', 'Novas Parcerias, Captação de Doações e Relacionamento com Empresas Cidadãs', 4),
-('ensino', 'Ensino (Pedagógico)', 'Planejamento Pedagógico, Acompanhamento de Aprendizes e Aulas Teóricas', 5),
-('psicologia_social', 'Psicologia & Social', 'Atendimento Psicológico, Acolhimento Sociofamiliar e Visitas Domiciliares', 6),
-('limpeza', 'Limpeza e Zeladoria', 'Higienização, Manutenção Preventiva e Conservação dos Ambientes', 7),
-('projetos', 'Gerência de Projetos', 'Planejamento Estratégico, Captação de Editais e Execução de Projetos Sociais', 8),
-('estagio', 'Estágio', 'Programa de Estágio Não Obrigatório, Triagem e Convênios Estudantis', 9),
-('marketing', 'Marketing & Mídias', 'Gestão de Redes Sociais, Comunicação Institucional, Eventos e Identidade Visual', 10),
-('manutencao', 'Manutenção Predial', 'Reparos Estruturais, Elétrica, Hidráulica e Conservação Geral da Sede', 11),
-('gerencia_geral', 'Gerência Geral', 'Diretrizes Estratégicas Institucionais, Prestação de Contas e Liderança Executiva', 12),
-('cozinha', 'Cozinha & Nutrição', 'Preparo Nutricional, Café da Manhã e Almoço Diário dos Jovens Aprendizes', 13),
-('presidencia', 'Presidência', 'Representação Institucional Oficial, Relações Institucionais e Diretoria', 14)
+('gerencia_geral', 'Gerente Geral', 'Direção operacional, coordenação executiva e alinhamento institucional.', 1),
+('projetos', 'Gerente de Projetos', 'Gestão e execução de projetos socioeducativos e convênios estratégicos.', 2),
+('rh', 'Gestão de Pessoas | RH', 'Administração de pessoal, acolhimento, desenvolvimento humano e departamento pessoal.', 3),
+('captacao', 'Captação de Recursos', 'Relações institucionais, parcerias corporativas e sustentabilidade financeira.', 4),
+('presidencia', 'Presidente', 'Governança institucional, representação estatutária e conselho diretor.', 5),
+('coordenador_administrativo', 'Coordenador Administrativo', 'Gestão de processos administrativos, compras, suporte e conformidade.', 6),
+('manutencao', 'Manutenção', 'Infraestrutura predial, segurança patrimonial e manutenção preventiva e corretiva.', 7),
+('estagio', 'Estágio', 'Programa de estágio socioeducativo, supervisão e integração ao mercado.', 8),
+('limpeza', 'Limpeza', 'Zeladoria, higienização de ambientes e conservação das dependências.', 9),
+('cozinha', 'Cozinha', 'Alimentação balanceada, nutrição dos aprendizes e gestão do refeitório.', 10),
+('financeiro', 'Financeiro', 'Contas a pagar e receber, fluxo de caixa, prestação de contas e controladoria.', 11),
+('pedagogico', 'Pedagógico (Ensino)', 'Formação básica de aprendizes, grade curricular e acompanhamento pedagógico.', 12),
+('psicologia', 'Psicologia', 'Apoio psicossocial, escuta empática e acompanhamento comportamental.', 13),
+('social', 'Social', 'Supervisão social, acolhimento de famílias e relatórios de vulnerabilidade.', 14),
+('ti', 'Tecnologia (TI)', 'Infraestrutura de redes, sistemas de informação, suporte técnico e segurança de dados.', 15),
+('marketing', 'Marketing', 'Comunicação institucional, mídias sociais, eventos e identidade visual.', 16),
+('ensino', 'Ensino (Pedagógico)', 'Planejamento pedagógico e aulas teóricas de aprendizes', 17),
+('psicologia_social', 'Psicologia & Social', 'Equipe multidisciplinar de atendimento psicossocial', 18)
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description;
 
 -- 8.2 Inserir Configurações Institucionais
@@ -1078,7 +1161,7 @@ BEGIN
     PERFORM set_config('search_path', 'public, extensions, auth', true);
     v_default_hash := extensions.crypt('camp1234', extensions.gen_salt('bf', 12));
 
-    -- 1. Administrador (Nilton Luiz)
+    -- 1. Coordenador Administrativo & Administrador (Nilton Luiz)
     INSERT INTO public.users (
         id, name, email, phone, role, department_id, department_name, position, permissions
     ) VALUES (
@@ -1087,15 +1170,34 @@ BEGIN
         'niltonnluiz@gmail.com',
         '(11) 2842-2470',
         'admin',
-        'ti',
-        'Tecnologia (TI)',
-        'Administrador do Sistema / TI',
+        'coordenador_administrativo',
+        'Coordenador Administrativo',
+        'Coordenador Administrativo',
         '{"canEditFinancials": true, "canExportPdf": true, "canExportExcel": true, "canManageUsers": true, "canViewAuditLogs": true, "canChangeReportStatus": true, "canManageSchedules": true}'::jsonb
-    ) ON CONFLICT (id) DO NOTHING;
+    ) ON CONFLICT (id) DO UPDATE SET
+        department_id = 'coordenador_administrativo',
+        department_name = 'Coordenador Administrativo',
+        position = 'Coordenador Administrativo';
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_admin', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
+
+    -- Coordenação Administrativa institucional
+    INSERT INTO public.users (
+        id, name, email, phone, role, department_id, department_name, position
+    ) VALUES (
+        'user_coord_admin',
+        'Coordenação Administrativa',
+        'administrativo@campsantoandre.org.br',
+        '(11) 2842-2470',
+        'coordinator',
+        'coordenador_administrativo',
+        'Coordenador Administrativo',
+        'Coordenador(a) Administrativo(a)'
+    ) ON CONFLICT (id) DO UPDATE SET
+        department_id = 'coordenador_administrativo',
+        department_name = 'Coordenador Administrativo';
 
     -- 2. RH (Rosangela Tavares)
     INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)

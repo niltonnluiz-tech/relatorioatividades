@@ -24,11 +24,16 @@ interface Props {
 }
 
 export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
-  // Identify the last logged in user from localStorage
+  // Identify the last logged in user from localStorage or default to Coordenador Administrativo
   const lastUserId = typeof localStorage !== 'undefined'
     ? localStorage.getItem('CAMP_LAST_LOGGED_IN_USER_ID') || localStorage.getItem('CAMP_AUTH_USER_ID')
     : null;
-  const initialUser = (lastUserId && users.find((u) => u.id === lastUserId)) || null;
+  
+  const preferredCoordAdmin = users.find((u) => u.id === 'user_admin' || u.email === 'niltonnluiz@gmail.com')
+    || users.find((u) => u.departmentId === 'coordenador_administrativo')
+    || users[0];
+
+  const initialUser = (lastUserId && users.find((u) => u.id === lastUserId)) || preferredCoordAdmin || null;
 
   const [rememberedUser, setRememberedUser] = useState<User | null>(initialUser);
   const [isSwitchingAccount, setIsSwitchingAccount] = useState<boolean>(!initialUser);
