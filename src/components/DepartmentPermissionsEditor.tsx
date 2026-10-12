@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserPermissions, DepartmentId } from '../types';
-import { OFFICIAL_SECTORS } from '../constants/sectors';
+import { OFFICIAL_SECTORS, getSectorDescription } from '../constants/sectors';
 import { 
   Shield, 
   FileText, 
@@ -304,7 +304,7 @@ export const DepartmentPermissionsEditor: React.FC<Props> = ({
                           )}
                         </div>
                         <span className="text-[10px] text-gray-500 block truncate max-w-sm">
-                          {sector.description}
+                          {getSectorDescription(sector.id)}
                         </span>
                       </td>
 

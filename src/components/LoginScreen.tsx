@@ -24,29 +24,28 @@ interface Props {
 }
 
 export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
-  const [selectedUser, setSelectedUser] = useState<User | null>(users[0] || null);
-  const [emailInput, setEmailInput] = useState<string>(users[0]?.email || '');
+  // Identify the last logged in user from localStorage
+  const lastUserId = typeof localStorage !== 'undefined'
+    ? localStorage.getItem('CAMP_LAST_LOGGED_IN_USER_ID') || localStorage.getItem('CAMP_AUTH_USER_ID')
+    : null;
+  const initialUser = (lastUserId && users.find((u) => u.id === lastUserId)) || null;
+
+  const [rememberedUser, setRememberedUser] = useState<User | null>(initialUser);
+  const [isSwitchingAccount, setIsSwitchingAccount] = useState<boolean>(!initialUser);
+  const [emailInput, setEmailInput] = useState<string>(initialUser ? initialUser.email : '');
   const [passwordInput, setPasswordInput] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
   const [twoFactorToken, setTwoFactorToken] = useState<string>('');
   const [step, setStep] = useState<'credentials' | '2fa'>('credentials');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [loginMode, setLoginMode] = useState<'quick' | 'manual'>('quick');
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
-
-  const handleSelectQuickUser = (user: User) => {
-    setSelectedUser(user);
-    setEmailInput(user.email);
-    setPasswordInput('');
-    setErrorMsg(null);
-  };
 
   const handleProceedLogin = async () => {
     setErrorMsg(null);
 
-    const targetUser = loginMode === 'quick' && selectedUser
-      ? selectedUser
+    const targetUser = (!isSwitchingAccount && rememberedUser)
+      ? rememberedUser
       : users.find((u) => u.email.trim().toLowerCase() === emailInput.trim().toLowerCase());
 
     if (!targetUser) {
@@ -75,7 +74,7 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
           const authResult = await supabaseService.authenticateUser(targetUser.email, cleanPass);
           if (authResult.success) {
             if (targetUser.twoFactorEnabled) {
-              setSelectedUser(targetUser);
+              setRememberedUser(targetUser);
               setStep('2fa');
               setIsAuthenticating(false);
               return;
@@ -116,7 +115,7 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
 
       // Se o usuário possui 2FA ativado, prossegue para o segundo fator
       if (targetUser.twoFactorEnabled) {
-        setSelectedUser(targetUser);
+        setRememberedUser(targetUser);
         setStep('2fa');
         setIsAuthenticating(false);
         return;
@@ -131,7 +130,7 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
   };
 
   const handleVerify2Fa = () => {
-    if (!selectedUser) return;
+    if (!rememberedUser) return;
     // Accept valid 6 digit token or backup codes
     const cleanToken = twoFactorToken.trim();
     if (cleanToken.length < 6) {
@@ -139,11 +138,12 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
       return;
     }
 
-    finalizeLogin(selectedUser);
+    finalizeLogin(rememberedUser);
   };
 
   const finalizeLogin = async (user: User) => {
     localStorage.setItem('CAMP_AUTH_USER_ID', user.id);
+    localStorage.setItem('CAMP_LAST_LOGGED_IN_USER_ID', user.id);
     localStorage.setItem('CAMP_IS_AUTHENTICATED', 'true');
 
     // Register login in SQL audit trail
@@ -202,91 +202,70 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
 
           {step === 'credentials' ? (
             <>
-              {/* Login Mode Switch */}
-              <div className="flex bg-gray-800/80 p-1 rounded-xl border border-gray-700/60 text-xs font-bold">
-                <button
-                  type="button"
-                  onClick={() => setLoginMode('quick')}
-                  className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    loginMode === 'quick'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Usuários Existentes</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLoginMode('manual')}
-                  className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    loginMode === 'manual'
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'text-gray-400 hover:text-white'
-                  }`}
-                >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  <span>E-mail e Senha</span>
-                </button>
-              </div>
+              {/* Remembered User Card vs Manual Email */}
+              {rememberedUser && !isSwitchingAccount ? (
+                /* Card do único usuário que já fez login */
+                <div className="p-4 rounded-2xl bg-gray-800/60 border border-gray-700/80 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <UserIcon className="w-3.5 h-3.5 text-blue-400" /> Usuário Conectado
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSwitchingAccount(true);
+                        setPasswordInput('');
+                        setErrorMsg(null);
+                      }}
+                      className="text-xs text-blue-400 hover:text-blue-300 font-semibold cursor-pointer hover:underline"
+                    >
+                      Trocar de conta / Outro e-mail
+                    </button>
+                  </div>
 
-              {loginMode === 'quick' ? (
-                /* Quick user select list */
-                <div className="space-y-3">
-                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    Selecione o Usuário Cadastrado ({users.length})
-                  </label>
-                  <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
-                    {users.map((u) => {
-                      const isSelected = selectedUser?.id === u.id;
-                      return (
-                        <div
-                          key={u.id}
-                          onClick={() => handleSelectQuickUser(u)}
-                          className={`p-2.5 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
-                            isSelected
-                              ? 'bg-blue-600/20 border-blue-500 shadow-sm'
-                              : 'bg-gray-800/40 border-gray-800 hover:bg-gray-800/80 hover:border-gray-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <img
-                              src={u.avatarUrl}
-                              alt={u.name}
-                              className="w-10 h-10 rounded-full object-cover border border-gray-700"
-                            />
-                            <div>
-                              <div className="font-bold text-sm text-white flex items-center gap-2">
-                                <span>{u.name}</span>
-                                {u.role === 'admin' && (
-                                  <span className="bg-purple-900/60 text-purple-300 text-[10px] font-bold px-1.5 py-0.5 rounded">
-                                    ADMIN
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-xs text-gray-400">{u.position}</p>
-                            </div>
-                          </div>
-
-                          <div className="text-right">
-                            <span className="text-[10px] font-semibold text-gray-400 block">
-                              {u.departmentName}
-                            </span>
-                            {isSelected && (
-                              <span className="text-xs text-blue-400 font-bold">Selecionado ✓</span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
+                  <div className="flex items-center gap-3.5 pt-1">
+                    <img
+                      src={rememberedUser.avatarUrl}
+                      alt={rememberedUser.name}
+                      className="w-12 h-12 rounded-full object-cover border-2 border-blue-500 shadow-md flex-shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-white text-base truncate">{rememberedUser.name}</span>
+                        {rememberedUser.role === 'admin' && (
+                          <span className="bg-purple-900/70 text-purple-200 text-[10px] font-black px-1.5 py-0.5 rounded border border-purple-700">
+                            ADMIN
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400 truncate">{rememberedUser.position}</p>
+                      <span className="text-[11px] text-blue-400 font-medium block truncate mt-0.5">
+                        {rememberedUser.departmentName}
+                      </span>
+                    </div>
                   </div>
                 </div>
               ) : (
-                /* Manual Email Input */
+                /* Manual Email Input (sem listar outros usuários) */
                 <div className="space-y-2">
-                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    E-mail Institucional
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">
+                      E-mail Institucional
+                    </label>
+                    {rememberedUser && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSwitchingAccount(false);
+                          setPasswordInput('');
+                          setErrorMsg(null);
+                        }}
+                        className="text-xs text-blue-400 hover:text-blue-300 font-semibold cursor-pointer hover:underline"
+                      >
+                        ← Voltar para {rememberedUser.name}
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <UserIcon className="w-4 h-4 text-gray-500 absolute left-3.5 top-3.5" />
                     <input
@@ -370,7 +349,7 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
                 </div>
                 <h3 className="font-bold text-lg text-white">Autenticação em Duas Etapas (2FA)</h3>
                 <p className="text-xs text-gray-400">
-                  Digite o código de 6 dígitos gerado pelo seu aplicativo autenticador para <strong>{selectedUser?.name}</strong>
+                  Digite o código de 6 dígitos gerado pelo seu aplicativo autenticador para <strong>{rememberedUser?.name || 'sua conta'}</strong>
                 </p>
               </div>
 
@@ -401,7 +380,7 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
                 onClick={() => setStep('credentials')}
                 className="w-full text-xs text-gray-400 hover:text-white py-1.5 cursor-pointer text-center"
               >
-                ← Voltar para seleção de usuário
+                ← Voltar para inserção de senha
               </button>
             </div>
           )}
@@ -419,7 +398,7 @@ export const LoginScreen: React.FC<Props> = ({ users, onLoginSuccess }) => {
         onClose={() => setIsForgotModalOpen(false)}
         availableUsers={users}
         onPasswordResetSuccess={(updatedUser) => {
-          setSelectedUser(updatedUser);
+          setRememberedUser(updatedUser);
           setEmailInput(updatedUser.email);
           if (updatedUser.password) {
             setPasswordInput(updatedUser.password);

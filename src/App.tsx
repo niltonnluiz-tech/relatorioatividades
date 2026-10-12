@@ -22,6 +22,7 @@ import { BrandingSettingsModal, LogoTarget } from './components/BrandingSettings
 import { SupabaseConnectionModal } from './components/SupabaseConnectionModal';
 import { ChevronLeft, ChevronRight, Download, FileText, Lock, ShieldCheck, BarChart3, Image as ImageIcon } from 'lucide-react';
 import { canUserAccessReport, canUserExportPdf, canUserExportExcel } from './utils/permissions';
+import { getReportPages, getReportPageNamesMap } from './constants/reportPages';
 
 export function App() {
   const [users, setUsers] = useState<User[]>(sqlDb.getUsers());
@@ -149,23 +150,9 @@ export function App() {
     setAuditLogs(sqlDb.getAuditLogs());
   };
 
-  const pageNames: Record<number, string> = {
-    1: 'Capa Oficial',
-    2: 'Contratados & Aprendizes',
-    3: 'Gestão de Pessoas (RH)',
-    4: 'Financeiro',
-    5: 'Captação de Recursos',
-    6: 'Ensino (Pedagógico)',
-    7: 'Psicologia & Social',
-    8: 'Limpeza e Zeladoria',
-    9: 'Gerência de Projetos',
-    10: 'Estágio & TI',
-    11: 'Marketing & Mídias',
-    12: 'Manutenção Predial',
-    13: 'Gerência Geral',
-    14: 'Cozinha & Nutrição',
-    15: 'Presidência',
-  };
+  const reportPages = getReportPages(currentReport);
+  const totalPages = reportPages.length;
+  const pageNames = getReportPageNamesMap(currentReport);
 
   // If not authenticated, render Login Screen
   if (!isAuthenticated) {
@@ -258,16 +245,16 @@ export function App() {
                       onChange={(e) => setPreviewPage(Number(e.target.value))}
                       className="bg-transparent font-bold text-gray-900 border-none focus:outline-none cursor-pointer text-xs max-w-[170px] sm:max-w-none truncate"
                     >
-                      {Array.from({ length: 15 }, (_, i) => i + 1).map((p) => (
-                        <option key={p} value={p}>
-                          Página {p}: {pageNames[p]}
+                      {reportPages.map((p) => (
+                        <option key={p.pageNumber} value={p.pageNumber}>
+                          Página {p.pageNumber}: {p.title}
                         </option>
                       ))}
                     </select>
-                    <span className="text-gray-500 font-semibold">/ 15</span>
+                    <span className="text-gray-500 font-semibold">/ {totalPages}</span>
                     <button
-                      disabled={previewPage >= 15}
-                      onClick={() => setPreviewPage((p) => Math.min(15, p + 1))}
+                      disabled={previewPage >= totalPages}
+                      onClick={() => setPreviewPage((p) => Math.min(totalPages, p + 1))}
                       className="p-1 hover:bg-gray-200 rounded disabled:opacity-30 cursor-pointer"
                     >
                       <ChevronRight className="w-4 h-4" />

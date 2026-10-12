@@ -4,7 +4,7 @@
  * and institutional footer badges of the attached PDF.
  */
 import React, { useState, useEffect } from 'react';
-import { MonthlyReport, User, InstitutionSettings } from '../types';
+import { MonthlyReport, User, InstitutionSettings, DepartmentId, DepartmentReportData } from '../types';
 import { sqlDb } from '../services/sqlDb';
 import { LogoTarget } from './BrandingSettingsModal';
 import { processUploadedImageFile } from '../services/imageUtils';
@@ -27,10 +27,12 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { canUserViewFinancials } from '../utils/permissions';
+import { getReportPages, getReportPageCount } from '../constants/reportPages';
+import { getSectorDescription, getSectorName } from '../constants/sectors';
 
 interface Props {
   report: MonthlyReport;
-  pageNumber: number; // 1 to 15
+  pageNumber: number; // 1 to totalPages
   currentUser?: User;
   onNavigatePage?: (page: number) => void;
   onOpenHiringModal?: () => void;
@@ -96,8 +98,8 @@ export const ReportPagePreview: React.FC<Props> = ({
     }
   };
 
-  // Page header present on pages 2-15
-  const renderHeader = (title?: string) => (
+  // Page header present on report pages
+  const renderHeader = (title?: string, description?: string) => (
     <div className="relative mb-4 sm:mb-6">
       <div className="flex items-center justify-between gap-3">
         {/* Black month tag + institution logo */}
@@ -123,8 +125,11 @@ export const ReportPagePreview: React.FC<Props> = ({
       </div>
 
       {title && (
-        <div className="mt-4 sm:mt-5 border-b-2 border-[#0B0F19] pb-2 inline-block max-w-full">
-          <h2 className="text-2xl sm:text-3xl font-black text-[#0B0F19] tracking-tight break-words">{title}</h2>
+        <div className="mt-3 sm:mt-4 border-b-2 border-[#0B0F19] pb-2 inline-block max-w-full">
+          <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-[#0B0F19] tracking-tight break-words">{title}</h2>
+          {description && (
+            <p className="text-xs sm:text-sm text-gray-600 mt-1 italic font-medium">{description}</p>
+          )}
         </div>
       )}
     </div>
@@ -192,14 +197,8 @@ export const ReportPagePreview: React.FC<Props> = ({
     );
   };
 
-  // Render Page Content based on pageNumber
-  const renderContent = () => {
-    switch (pageNumber) {
-      // ----------------------------------------------------
-      // PAGE 1: CAPA
-      // ----------------------------------------------------
-      case 1:
-        return (
+  // PAGE 1: CAPA OFICIAL
+  const renderCapa = () => (
           <div className="flex flex-col h-full justify-between">
             {/* Upload Notification Toast */}
             {uploadToast && (
@@ -430,13 +429,11 @@ export const ReportPagePreview: React.FC<Props> = ({
               </div>
             </div>
           </div>
-        );
+  );
 
-      // ----------------------------------------------------
-      // PAGE 2: CONTRATADOS & GRÁFICOS
-      // ----------------------------------------------------
-      case 2:
-        const hiringConfig = report.hiringDashboard || {
+  // PAGE 2: CONTRATADOS & GRÁFICOS
+  const renderContratados = () => {
+    const hiringConfig = report.hiringDashboard || {
           displayMode: '2_previous_and_current' as const,
           previousMonth2: {
             monthName: 'Maio 2026',
@@ -679,22 +676,36 @@ export const ReportPagePreview: React.FC<Props> = ({
             </div>
           </div>
         );
+  };
 
-      // ----------------------------------------------------
-      // PAGE 3: GESTÃO DE PESSOAS | RH
-      // ----------------------------------------------------
-      case 3:
-        const rh = report.departments.rh;
-        return (
-          <div>
-            {renderHeader('Gestão de Pessoas | RH')}
-            {renderCoordinator(
-              rh.coordinatorName,
-              rh.coordinatorTitle,
-              rh.coordinatorPhone,
-              rh.coordinatorEmail,
-              rh.coordinatorAvatar
-            )}
+  // PAGE: GESTÃO DE PESSOAS | RH
+  const renderRh = () => {
+    const rh = report.departments.rh;
+    return (
+      <div>
+        {renderHeader('Gestão de Pessoas | RH', getSectorDescription('rh'))}
+        {renderCoordinator(
+          rh.coordinatorName,
+          rh.coordinatorTitle,
+          rh.coordinatorPhone,
+          rh.coordinatorEmail,
+          rh.coordinatorAvatar
+        )}
+
+        {/* Tópicos & Atividades Realizadas no Início */}
+        {rh.bulletActivities && rh.bulletActivities.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-base sm:text-lg font-bold text-[#0B0F19] mb-3 flex items-center gap-2">
+              <span>Atividades & Ações Realizadas</span>
+              <span className="bg-blue-100 text-blue-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {rh.bulletActivities.length}
+              </span>
+            </h3>
+            <div className="space-y-2.5 pl-2">
+              {rh.bulletActivities.map((act, idx) => renderBulletActivity(act, idx))}
+            </div>
+          </div>
+        )}
 
             {/* Table 1: Indicador / Quantidade */}
             <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
@@ -755,24 +766,38 @@ export const ReportPagePreview: React.FC<Props> = ({
             </div>
           </div>
         );
+  };
 
-      // ----------------------------------------------------
-      // PAGE 4: FINANCEIRO
-      // ----------------------------------------------------
-      case 4:
-        const fin = report.departments.financeiro;
-        const hasFinancialAccess = canUserViewFinancials(currentUser);
+  // PAGE: FINANCEIRO
+  const renderFinanceiro = () => {
+    const fin = report.departments.financeiro;
+    const hasFinancialAccess = canUserViewFinancials(currentUser);
 
-        return (
-          <div>
-            {renderHeader('Financeiro')}
-            {renderCoordinator(
-              fin.coordinatorName,
-              fin.coordinatorTitle,
-              fin.coordinatorPhone,
-              fin.coordinatorEmail,
-              fin.coordinatorAvatar
-            )}
+    return (
+      <div>
+        {renderHeader('Financeiro', getSectorDescription('financeiro'))}
+        {renderCoordinator(
+          fin.coordinatorName,
+          fin.coordinatorTitle,
+          fin.coordinatorPhone,
+          fin.coordinatorEmail,
+          fin.coordinatorAvatar
+        )}
+
+        {/* Tópicos & Atividades Realizadas no Início */}
+        {fin.bulletActivities && fin.bulletActivities.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-base sm:text-lg font-bold text-[#0B0F19] mb-3 flex items-center gap-2">
+              <span>Atividades & Ações Realizadas</span>
+              <span className="bg-blue-100 text-blue-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {fin.bulletActivities.length}
+              </span>
+            </h3>
+            <div className="space-y-2.5 pl-2">
+              {fin.bulletActivities.map((act, idx) => renderBulletActivity(act, idx))}
+            </div>
+          </div>
+        )}
 
             {/* Aviso de Sigilo Financeiro se usuário não tiver permissão */}
             {!hasFinancialAccess && (
@@ -839,282 +864,201 @@ export const ReportPagePreview: React.FC<Props> = ({
             </div>
           </div>
         );
+  };
 
-      // ----------------------------------------------------
-      // PAGE 5: CAPTAÇÃO DE RECURSOS
-      // ----------------------------------------------------
-      case 5:
-        const cap = report.departments.captacao;
-        return (
-          <div>
-            {renderHeader('Captação de Recursos')}
-            {renderCoordinator(
-              cap.coordinatorName,
-              cap.coordinatorTitle,
-              cap.coordinatorPhone,
-              cap.coordinatorEmail,
-              cap.coordinatorAvatar
-            )}
+  // PAGE: GERÊNCIA DE PROJETOS
+  const renderProjetos = () => {
+    const proj = report.departments.projetos;
+    return (
+      <div>
+        {renderHeader('Gerência de Projetos', getSectorDescription('projetos'))}
+        {renderCoordinator(
+          proj.coordinatorName,
+          proj.coordinatorTitle,
+          proj.coordinatorPhone,
+          proj.coordinatorEmail,
+          proj.coordinatorAvatar
+        )}
 
-            {/* Table 1: Captação de Recursos */}
-            <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
-              <table className="w-full text-xs md:text-sm min-w-[280px]">
-                <thead>
-                  <tr className="bg-[#0B0F19] text-white">
-                    <th className="p-2.5 text-center font-bold" colSpan={2}>
-                      Captação de Recursos
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {cap.metrics.map((m) => (
-                    <tr key={m.id} className="hover:bg-gray-50">
-                      <td className="p-2 font-medium text-gray-900">{m.label}</td>
-                      <td className="p-2 text-center font-bold text-gray-900 w-28">{m.value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Table 2: Recrutamento e Seleção */}
-            <div className="border border-gray-300 rounded-lg overflow-x-auto">
-              <table className="w-full text-xs md:text-sm min-w-[280px]">
-                <thead>
-                  <tr className="bg-[#0B0F19] text-white">
-                    <th className="p-2.5 text-center font-bold" colSpan={2}>
-                      Recrutamento e Seleção
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {(cap.subMetrics?.[0]?.items || []).map((m) => (
-                    <tr key={m.id} className="hover:bg-gray-50">
-                      <td className="p-2 font-medium text-gray-900">{m.label}</td>
-                      <td className="p-2 text-center font-bold text-gray-900 w-28">{m.value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* Tópicos & Atividades Realizadas no Início */}
+        {proj.bulletActivities && proj.bulletActivities.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-base sm:text-lg font-bold text-[#0B0F19] mb-3 flex items-center gap-2">
+              <span>Atividades & Ações Realizadas</span>
+              <span className="bg-blue-100 text-blue-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {proj.bulletActivities.length}
+              </span>
+            </h3>
+            <div className="space-y-2.5 pl-2">
+              {proj.bulletActivities.map((act, idx) => renderBulletActivity(act, idx))}
             </div>
           </div>
-        );
+        )}
 
-      // ----------------------------------------------------
-      // PAGE 6: ENSINO
-      // ----------------------------------------------------
-      case 6:
-        const ens = report.departments.ensino;
-        return (
+        <div className="mt-6 space-y-6">
+          {/* Section 1 */}
           <div>
-            {renderHeader('Ensino')}
-            {renderCoordinator(
-              ens.coordinatorName,
-              ens.coordinatorTitle,
-              ens.coordinatorPhone,
-              ens.coordinatorEmail,
-              ens.coordinatorAvatar
-            )}
-
-            <div className="border border-gray-300 rounded-lg overflow-x-auto">
-              <table className="w-full text-xs min-w-[280px]">
-                <thead>
-                  <tr className="bg-[#0B0F19] text-white">
-                    <th className="p-2.5 text-center font-bold text-sm" colSpan={2}>
-                      Coordenação Técnica
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {ens.metrics.map((m) => (
-                    <tr key={m.id} className="hover:bg-gray-50">
-                      <td className="p-1.5 px-3 font-medium text-gray-900">{m.label}</td>
-                      <td className="p-1.5 text-center font-bold text-gray-900 w-24">{m.value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
+              {proj.subBulletSections?.[0]?.title || 'Legislação / Certificações'}
+            </h3>
+            <div className="space-y-2 pl-2">
+              {(proj.subBulletSections?.[0]?.items || []).map((item, idx) => renderBulletActivity(item, idx))}
             </div>
           </div>
-        );
 
-      // ----------------------------------------------------
-      // PAGE 7: PSICOLOGIA & SUPERVISORA SOCIAL
-      // ----------------------------------------------------
-      case 7:
-        const psi = report.departments.psicologia_social;
-        return (
+          {/* Section 2 */}
           <div>
-            {renderHeader()}
-
-            {/* Table 1: Psicologia */}
-            <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
-              <table className="w-full text-xs min-w-[280px]">
-                <thead>
-                  <tr className="bg-[#0B0F19] text-white">
-                    <th className="p-2 text-center font-bold text-sm" colSpan={2}>
-                      Psicologia
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {psi.metrics.map((m) => (
-                    <tr key={m.id} className="hover:bg-gray-50">
-                      <td className="p-1.5 px-3 font-medium text-gray-900">{m.label}</td>
-                      <td className="p-1.5 text-center font-bold text-gray-900 w-24">{m.value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Table 2: Supervisora Social */}
-            <div className="border border-gray-300 rounded-lg overflow-x-auto">
-              <table className="w-full text-xs min-w-[280px]">
-                <thead>
-                  <tr className="bg-[#0B0F19] text-white">
-                    <th className="p-2 text-center font-bold text-sm" colSpan={2}>
-                      Supervisora Social
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {(psi.subMetrics?.[0]?.items || []).map((m) => (
-                    <tr key={m.id} className="hover:bg-gray-50">
-                      <td className="p-1.5 px-3 font-medium text-gray-900">{m.label}</td>
-                      <td className="p-1.5 text-center font-bold text-gray-900 w-24">{m.value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
+              {proj.subBulletSections?.[1]?.title || 'Estágio'}
+            </h3>
+            <div className="space-y-2 pl-2">
+              {(proj.subBulletSections?.[1]?.items || []).map((item, idx) => renderBulletActivity(item, idx))}
             </div>
           </div>
-        );
+        </div>
+      </div>
+    );
+  };
 
-      // ----------------------------------------------------
-      // PAGE 8: LIMPEZA
-      // ----------------------------------------------------
-      case 8:
-        const limp = report.departments.limpeza;
-        return (
-          <div>
-            {renderHeader('Limpeza')}
-            <div className="mt-8 space-y-3 pl-2">
-              {(limp.bulletActivities || []).map((act, idx) => renderBulletActivity(act, idx))}
+  // PAGE: PRESIDENTE
+  const renderPresidencia = () => {
+    const pres = report.departments.presidencia;
+    return (
+      <div>
+        {renderHeader('Presidente', getSectorDescription('presidencia'))}
+        {renderCoordinator(
+          pres.coordinatorName,
+          pres.coordinatorTitle,
+          pres.coordinatorPhone,
+          pres.coordinatorEmail,
+          pres.coordinatorAvatar
+        )}
+
+        {/* Tópicos & Atividades Realizadas no Início */}
+        {pres.bulletActivities && pres.bulletActivities.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-base sm:text-lg font-bold text-[#0B0F19] mb-3 flex items-center gap-2">
+              <span>Atividades & Ações Realizadas</span>
+              <span className="bg-blue-100 text-blue-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                {pres.bulletActivities.length}
+              </span>
+            </h3>
+            <div className="space-y-2.5 pl-2">
+              {pres.bulletActivities.map((act, idx) => renderBulletActivity(act, idx))}
             </div>
           </div>
-        );
+        )}
 
-      // ----------------------------------------------------
-      // PAGE 9: GERÊNCIA DE PROJETOS
-      // ----------------------------------------------------
-      case 9:
-        const proj = report.departments.projetos;
-        return (
+        <div className="mt-6 space-y-6">
+          {/* Implantações realizadas */}
           <div>
-            {renderHeader('Gerência de Projetos')}
-            {renderCoordinator(
-              proj.coordinatorName,
-              proj.coordinatorTitle,
-              proj.coordinatorPhone,
-              proj.coordinatorEmail,
-              proj.coordinatorAvatar
-            )}
-
-            <div className="mt-6 space-y-6">
-              {/* Section 1 */}
-              <div>
-                <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
-                  {proj.subBulletSections?.[0]?.title || 'Legislação / Certificações'}
-                </h3>
-                <div className="space-y-2 pl-2">
-                  {(proj.subBulletSections?.[0]?.items || []).map((item, idx) => renderBulletActivity(item, idx))}
-                </div>
-              </div>
-
-              {/* Section 2 */}
-              <div>
-                <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
-                  {proj.subBulletSections?.[1]?.title || 'Estágio'}
-                </h3>
-                <div className="space-y-2 pl-2">
-                  {(proj.subBulletSections?.[1]?.items || []).map((item, idx) => renderBulletActivity(item, idx))}
-                </div>
-              </div>
+            <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
+              {pres.subBulletSections?.[0]?.title || 'Implantações realizadas'}
+            </h3>
+            <div className="space-y-2.5 pl-2">
+              {(pres.subBulletSections?.[0]?.items || []).map((item, idx) => renderBulletActivity(item, idx))}
             </div>
           </div>
-        );
 
-      // ----------------------------------------------------
-      // PAGE 10: ESTÁGIO & TECNOLOGIA DA INFORMAÇÃO
-      // ----------------------------------------------------
-      case 10:
-        const ti = report.departments.ti;
-        return (
+          {/* Próximas implantações */}
           <div>
-            {renderHeader()}
-
-            {/* Table: Estágio */}
-            <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
-              <table className="w-full text-xs min-w-[280px]">
-                <thead>
-                  <tr className="bg-[#0B0F19] text-white">
-                    <th className="p-2 text-center font-bold text-sm" colSpan={2}>
-                      Estágio
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {ti.metrics.map((m) => (
-                    <tr key={m.id} className="hover:bg-gray-50">
-                      <td className="p-1.5 px-3 font-medium text-gray-900">
-                        {m.label}
-                        {m.date && (
-                          <span className="text-[10px] text-gray-500 font-mono ml-2 font-normal">
-                            ({m.date.split('-').reverse().slice(0, 2).join('/')})
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-1.5 text-center font-bold text-gray-900 w-24">{m.value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
+              {pres.subBulletSections?.[1]?.title || 'Próximas implantações'}
+            </h3>
+            <div className="space-y-2.5 pl-2">
+              {(pres.subBulletSections?.[1]?.items || []).map((item, idx) => renderBulletActivity(item, idx))}
             </div>
+          </div>
 
-            {/* List: TI */}
+          {/* Slogan */}
+          <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center mt-6">
+            <p className="font-bold text-sm text-gray-900">
+              {pres.customNotes || 'Estamos captando novas doações e parcerias. Seja um doador você também.'}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Renderizador dinâmico de departamentos para todos os setores cadastrados no sistema
+  const renderDepartmentPage = (deptId: DepartmentId, pageTitle?: string) => {
+    let dept = report.departments[deptId];
+    if (!dept) {
+      if (deptId === 'pedagogico') dept = (report.departments as any).ensino;
+      else if (deptId === 'psicologia' || deptId === 'social') dept = (report.departments as any).psicologia_social;
+    }
+
+    const safeDept: DepartmentReportData = dept || {
+      departmentId: deptId,
+      coordinatorName: 'Coordenação Setorial',
+      coordinatorTitle: getSectorName(deptId),
+      coordinatorPhone: '(11) 2842-2470',
+      coordinatorEmail: `${deptId}@campsantoandre.org.br`,
+      coordinatorAvatar: '',
+      lastModified: '',
+      modifiedBy: '',
+      status: 'rascunho',
+      metrics: [],
+      bulletActivities: [],
+    };
+
+    const sectorDesc = getSectorDescription(deptId);
+    const title = pageTitle || getSectorName(deptId);
+
+    return (
+      <div>
+        {renderHeader(title, sectorDesc)}
+        {renderCoordinator(
+          safeDept.coordinatorName,
+          safeDept.coordinatorTitle,
+          safeDept.coordinatorPhone,
+          safeDept.coordinatorEmail,
+          safeDept.coordinatorAvatar
+        )}
+
+        <div className="mt-6 space-y-6">
+          {/* 1. TÓPICOS & ATIVIDADES REALIZADAS NO INÍCIO */}
+          {safeDept.bulletActivities && safeDept.bulletActivities.length > 0 && (
             <div>
-              <h3 className="text-2xl font-black text-[#0B0F19] mb-4">
-                Tecnologia da informação
+              <h3 className="text-base sm:text-lg font-bold text-[#0B0F19] mb-3 flex items-center gap-2">
+                <span>Atividades & Ações Realizadas</span>
+                <span className="bg-blue-100 text-blue-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                  {safeDept.bulletActivities.length}
+                </span>
               </h3>
-              <div className="space-y-2 pl-2">
-                {(ti.bulletActivities || []).map((act, idx) => renderBulletActivity(act, idx))}
+              <div className="space-y-2.5 pl-2">
+                {safeDept.bulletActivities.map((act, idx) => renderBulletActivity(act, idx))}
               </div>
             </div>
-          </div>
-        );
+          )}
 
-      // ----------------------------------------------------
-      // PAGE 11: MARKETING
-      // ----------------------------------------------------
-      case 11:
-        const mkt = report.departments.marketing;
-        return (
-          <div>
-            {renderHeader()}
+          {/* Sub-Bullet Sections se houver */}
+          {safeDept.subBulletSections && safeDept.subBulletSections.length > 0 && (
+            <div className="space-y-5">
+              {safeDept.subBulletSections.map((sec, sIdx) => (
+                <div key={sIdx}>
+                  <h3 className="text-base sm:text-lg font-bold text-[#0B0F19] mb-3">{sec.title}</h3>
+                  <div className="space-y-2 pl-2">
+                    {(sec.items || []).map((item, idx) => renderBulletActivity(item, idx))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
-            {/* Table: Marketing */}
-            <div className="border border-gray-300 rounded-lg overflow-x-auto mb-8">
+          {/* 2. INDICADORES & QUANTITATIVOS (TABELA) */}
+          {safeDept.metrics && safeDept.metrics.length > 0 && (
+            <div className="border border-gray-300 rounded-lg overflow-x-auto">
               <table className="w-full text-xs md:text-sm min-w-[280px]">
                 <thead>
                   <tr className="bg-[#0B0F19] text-white">
-                    <th className="p-2.5 text-center font-bold text-sm" colSpan={2}>
-                      Marketing
-                    </th>
+                    <th className="p-2.5 text-left font-bold">Indicador / Descrição</th>
+                    <th className="p-2.5 text-center font-bold w-36">Quantidade / Valor</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {mkt.metrics.map((m) => (
+                  {safeDept.metrics.map((m) => (
                     <tr key={m.id} className="hover:bg-gray-50">
                       <td className="p-2 px-3 font-medium text-gray-900">
                         {m.label}
@@ -1124,126 +1068,102 @@ export const ReportPagePreview: React.FC<Props> = ({
                           </span>
                         )}
                       </td>
-                      <td className="p-2 text-center font-bold text-gray-900 w-28">{m.value}</td>
+                      <td className="p-2 text-center font-bold text-gray-900 w-36">
+                        {m.value}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+          )}
 
-            {/* List: Campanhas e artes */}
-            <div>
-              <h3 className="text-xl font-bold text-[#0B0F19] mb-4">
-                Campanhas e artes realizadas
-              </h3>
-              <div className="space-y-3 pl-2">
-                {(mkt.bulletActivities || []).map((act, idx) => renderBulletActivity(act, idx))}
-              </div>
-            </div>
-          </div>
-        );
-
-      // ----------------------------------------------------
-      // PAGE 12: MANUTENÇÃO
-      // ----------------------------------------------------
-      case 12:
-        const manut = report.departments.manutencao;
-        return (
-          <div>
-            {renderHeader('Manutenção')}
-            <div className="mt-8 space-y-3.5 pl-2">
-              {(manut.bulletActivities || []).map((act, idx) => renderBulletActivity(act, idx))}
-            </div>
-          </div>
-        );
-
-      // ----------------------------------------------------
-      // PAGE 13: GERÊNCIA GERAL
-      // ----------------------------------------------------
-      case 13:
-        const gg = report.departments.gerencia_geral;
-        return (
-          <div>
-            {renderHeader('Gerência Geral')}
-            {renderCoordinator(
-              gg.coordinatorName,
-              gg.coordinatorTitle,
-              gg.coordinatorPhone,
-              gg.coordinatorEmail,
-              gg.coordinatorAvatar
-            )}
-
-            <div className="mt-8 space-y-4 pl-2">
-              {(gg.bulletActivities || []).map((act, idx) => renderBulletActivity(act, idx))}
-            </div>
-          </div>
-        );
-
-      // ----------------------------------------------------
-      // PAGE 14: COZINHA
-      // ----------------------------------------------------
-      case 14:
-        const coz = report.departments.cozinha;
-        return (
-          <div>
-            {renderHeader('Cozinha')}
-            <div className="mt-8 space-y-3.5 pl-2">
-              {(coz.bulletActivities || []).map((act, idx) => renderBulletActivity(act, idx))}
-            </div>
-          </div>
-        );
-
-      // ----------------------------------------------------
-      // PAGE 15: PRESIDENTE
-      // ----------------------------------------------------
-      case 15:
-        const pres = report.departments.presidencia;
-        return (
-          <div>
-            {renderHeader('Presidente')}
-            {renderCoordinator(
-              pres.coordinatorName,
-              pres.coordinatorTitle,
-              pres.coordinatorPhone,
-              pres.coordinatorEmail,
-              pres.coordinatorAvatar
-            )}
-
-            <div className="mt-6 space-y-6">
-              {/* Implantações realizadas */}
-              <div>
-                <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
-                  {pres.subBulletSections?.[0]?.title || 'Implantações realizadas'}
-                </h3>
-                <div className="space-y-2.5 pl-2">
-                  {(pres.subBulletSections?.[0]?.items || []).map((item, idx) => renderBulletActivity(item, idx))}
+          {/* Sub-métricas se houver */}
+          {safeDept.subMetrics && safeDept.subMetrics.length > 0 && (
+            <div className="space-y-4">
+              {safeDept.subMetrics.map((sm, smIdx) => (
+                <div key={smIdx} className="border border-gray-300 rounded-lg overflow-x-auto">
+                  <div className="bg-[#0B0F19] text-white px-3 py-1.5 font-bold text-xs">
+                    {sm.title}
+                  </div>
+                  <table className="w-full text-xs md:text-sm">
+                    <tbody className="divide-y divide-gray-200">
+                      {(sm.items || []).map((m) => (
+                        <tr key={m.id} className="hover:bg-gray-50">
+                          <td className="p-2 px-3 font-medium text-gray-900">{m.label}</td>
+                          <td className="p-2 text-center font-bold text-gray-900 w-36">{m.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              </div>
-
-              {/* Próximas implantações */}
-              <div>
-                <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
-                  {pres.subBulletSections?.[1]?.title || 'Próximas implantações'}
-                </h3>
-                <div className="space-y-2.5 pl-2">
-                  {(pres.subBulletSections?.[1]?.items || []).map((item, idx) => renderBulletActivity(item, idx))}
-                </div>
-              </div>
-
-              {/* Slogan */}
-              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center mt-6">
-                <p className="font-bold text-sm text-gray-900">
-                  {pres.customNotes || 'Estamos captando novas doações e parcerias. Seja um doador você também.'}
-                </p>
-              </div>
+              ))}
             </div>
-          </div>
-        );
+          )}
 
-      default:
-        return <div>Página não encontrada</div>;
-    }
+          {/* Slogan / Custom Notes */}
+          {safeDept.customNotes && (
+            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center mt-4">
+              <p className="font-bold text-sm text-gray-800">{safeDept.customNotes}</p>
+            </div>
+          )}
+
+          {/* Estado sem dados cadastrados */}
+          {(!safeDept.bulletActivities || safeDept.bulletActivities.length === 0) &&
+            (!safeDept.metrics || safeDept.metrics.length === 0) &&
+            (!safeDept.subBulletSections || safeDept.subBulletSections.length === 0) && (
+              <div className="p-6 bg-gray-50 border border-dashed border-gray-300 rounded-xl text-center text-gray-500 text-xs">
+                Nenhum lançamento adicional registrado para este departamento neste mês.
+              </div>
+            )}
+        </div>
+      </div>
+    );
   };
+
+  const renderContent = () => {
+    const reportPages = getReportPages(report);
+    const pageConfig = reportPages.find((p) => p.pageNumber === pageNumber) || reportPages[pageNumber - 1];
+
+    if (!pageConfig) {
+      return (
+        <div className="text-center py-12 text-gray-500">
+          <p className="font-bold text-base">Página {pageNumber} não encontrada</p>
+          <p className="text-xs mt-1">Este relatório possui {reportPages.length} páginas configuradas.</p>
+        </div>
+      );
+    }
+
+    if (pageConfig.id === 'capa' || pageNumber === 1) {
+      return renderCapa();
+    }
+
+    if (pageConfig.id === 'contratados' || pageNumber === 2) {
+      return renderContratados();
+    }
+
+    const deptId = pageConfig.departmentId;
+    if (!deptId) {
+      return <div>Página {pageNumber}</div>;
+    }
+
+    if (deptId === 'rh') {
+      return renderRh();
+    }
+    if (deptId === 'financeiro') {
+      return renderFinanceiro();
+    }
+    if (deptId === 'projetos') {
+      return renderProjetos();
+    }
+    if (deptId === 'presidencia') {
+      return renderPresidencia();
+    }
+
+    return renderDepartmentPage(deptId, pageConfig.title);
+  };
+
+  const totalPages = getReportPageCount(report);
 
   return (
     <div
@@ -1256,9 +1176,10 @@ export const ReportPagePreview: React.FC<Props> = ({
       <div className="mt-6 sm:mt-8 pt-4 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
         <span className="font-semibold text-gray-700 truncate mr-2">CAMP Piero Pollone - Santo André</span>
         <span className="font-mono bg-gray-100 text-gray-700 px-2 py-0.5 rounded font-bold shrink-0">
-          Pág. {pageNumber} de 15
+          Pág. {pageNumber} de {totalPages}
         </span>
       </div>
     </div>
   );
 };
+

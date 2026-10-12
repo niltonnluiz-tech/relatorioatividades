@@ -10,6 +10,7 @@ import { BrandingSettingsModal, LogoTarget } from './BrandingSettingsModal';
 import { sqlDb } from '../services/sqlDb';
 import { Download, Printer, ChevronLeft, ChevronRight, X, Image as ImageIcon, Lock } from 'lucide-react';
 import { canUserExportPdf } from '../utils/permissions';
+import { getReportPages, getReportPageNamesMap } from '../constants/reportPages';
 
 interface Props {
   isOpen: boolean;
@@ -58,23 +59,9 @@ export const PdfViewerModal: React.FC<Props> = ({
     window.print();
   };
 
-  const pageNames: Record<number, string> = {
-    1: 'Capa Oficial',
-    2: 'Contratados & Aprendizes',
-    3: 'Gestão de Pessoas (RH)',
-    4: 'Financeiro',
-    5: 'Captação de Recursos',
-    6: 'Ensino (Pedagógico)',
-    7: 'Psicologia & Social',
-    8: 'Limpeza e Zeladoria',
-    9: 'Gerência de Projetos',
-    10: 'Estágio & TI',
-    11: 'Marketing & Mídias',
-    12: 'Manutenção Predial',
-    13: 'Gerência Geral',
-    14: 'Cozinha & Nutrição',
-    15: 'Presidência',
-  };
+  const reportPages = getReportPages(report);
+  const totalPages = reportPages.length;
+  const pageNames = getReportPageNamesMap(report);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-900/90 backdrop-blur-xs">
@@ -116,18 +103,18 @@ export const PdfViewerModal: React.FC<Props> = ({
                 onChange={(e) => setCurrentPage(Number(e.target.value))}
                 className="bg-transparent text-white font-semibold text-xs border-none focus:outline-none cursor-pointer max-w-[130px] sm:max-w-none truncate"
               >
-                {Array.from({ length: 15 }, (_, i) => i + 1).map((p) => (
-                  <option key={p} value={p} className="bg-gray-900 text-white">
-                    Pág {p}: {pageNames[p]}
+                {reportPages.map((p) => (
+                  <option key={p.pageNumber} value={p.pageNumber} className="bg-gray-900 text-white">
+                    Pág {p.pageNumber}: {p.title}
                   </option>
                 ))}
               </select>
 
-              <span className="text-gray-400 text-xs">/ 15</span>
+              <span className="text-gray-400 text-xs">/ {totalPages}</span>
 
               <button
-                disabled={currentPage >= 15}
-                onClick={() => setCurrentPage((p) => Math.min(15, p + 1))}
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                 className="p-1 hover:bg-gray-700 rounded disabled:opacity-30 cursor-pointer"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -210,11 +197,11 @@ export const PdfViewerModal: React.FC<Props> = ({
           />
         ) : (
           <div className="space-y-12 max-w-4xl w-full">
-            {Array.from({ length: 15 }, (_, i) => i + 1).map((p) => (
+            {reportPages.map((p) => (
               <ReportPagePreview 
-                key={p} 
+                key={p.pageNumber} 
                 report={report} 
-                pageNumber={p} 
+                pageNumber={p.pageNumber} 
                 currentUser={activeUser}
                 onOpenBrandingModal={(target) => {
                   setTargetLogoFocus(target);

@@ -148,3 +148,51 @@ export function getSectorName(departmentId?: string): string {
   const sector = OFFICIAL_SECTORS.find((s) => s.id === departmentId);
   return sector ? sector.name : departmentId;
 }
+
+/**
+ * Busca a descrição do setor (oficial ou personalizada pelo usuário)
+ */
+export function getSectorDescription(departmentId?: string): string {
+  if (!departmentId) return '';
+  const canonId = departmentId === 'admin' ? 'ti' : departmentId === 'ensino' ? 'pedagogico' : departmentId;
+  if (typeof localStorage !== 'undefined') {
+    const stored = localStorage.getItem('CAMP_SECTOR_DESCRIPTIONS');
+    if (stored) {
+      try {
+        const map = JSON.parse(stored);
+        if (map[canonId]) return map[canonId];
+        if (map[departmentId]) return map[departmentId];
+      } catch (e) {
+        console.error('Erro ao ler descrições de setores:', e);
+      }
+    }
+  }
+  const sector = OFFICIAL_SECTORS.find((s) => s.id === canonId || s.id === departmentId);
+  return sector ? sector.description : '';
+}
+
+/**
+ * Salva a nova descrição personalizada de um departamento/setor
+ */
+export function saveSectorDescription(departmentId: string, description: string): void {
+  const canonId = departmentId === 'admin' ? 'ti' : departmentId === 'ensino' ? 'pedagogico' : departmentId;
+  let map: Record<string, string> = {};
+  if (typeof localStorage !== 'undefined') {
+    const stored = localStorage.getItem('CAMP_SECTOR_DESCRIPTIONS');
+    if (stored) {
+      try {
+        map = JSON.parse(stored);
+      } catch (e) {}
+    }
+  }
+  map[canonId] = description;
+  map[departmentId] = description;
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('CAMP_SECTOR_DESCRIPTIONS', JSON.stringify(map));
+  }
+  const sector = OFFICIAL_SECTORS.find((s) => s.id === canonId || s.id === departmentId);
+  if (sector) {
+    sector.description = description;
+  }
+}
+

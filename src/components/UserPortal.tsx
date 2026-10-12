@@ -29,9 +29,10 @@ import {
   EyeOff,
   Edit3,
   ShieldAlert,
-  AlertTriangle
+  AlertTriangle,
+  Eraser
 } from 'lucide-react';
-import { OFFICIAL_SECTORS, getSortedSectors, getSectorName } from '../constants/sectors';
+import { OFFICIAL_SECTORS, getSortedSectors, getSectorName, getSectorDescription, saveSectorDescription } from '../constants/sectors';
 import { 
   canUserAccessDepartment, 
   canUserViewDepartment, 
@@ -102,9 +103,18 @@ export const UserPortal: React.FC<Props> = ({
   const [newItemValue, setNewItemValue] = useState<string>('');
   const [newItemUnit, setNewItemUnit] = useState<'numeric' | 'currency' | 'percent'>('numeric');
   const [isAddItemOpen, setIsAddItemOpen] = useState<boolean>(true);
+  // Department description editing state
+  const [sectorDescription, setSectorDescription] = useState<string>(() => getSectorDescription(activeDeptKey));
+  const [isEditDescModalOpen, setIsEditDescModalOpen] = useState(false);
+  const [editDescInput, setEditDescInput] = useState('');
+
+  // Clear items state
+  const [isClearModalOpen, setIsClearModalOpen] = useState(false);
+  const [clearOption, setClearOption] = useState<'topics' | 'metrics' | 'all'>('topics');
 
   // Sync state whenever activeDeptKey changes
   React.useEffect(() => {
+    setSectorDescription(getSectorDescription(activeDeptKey));
     const dept = currentReport.departments[activeDeptKey];
     if (dept) {
       setMetrics(dept.metrics || []);
@@ -115,6 +125,47 @@ export const UserPortal: React.FC<Props> = ({
       setStatus(dept.status);
     }
   }, [activeDeptKey, currentReport]);
+
+  const handleSaveSectorDescription = async () => {
+    if (!editDescInput.trim()) return;
+    await sqlDb.updateSectorDescription(activeDeptKey, editDescInput.trim(), currentUser);
+    setSectorDescription(editDescInput.trim());
+    setIsEditDescModalOpen(false);
+    setSaveFeedback(`Descrição do setor "${getSectorName(activeDeptKey)}" atualizada com sucesso!`);
+    setTimeout(() => setSaveFeedback(null), 4000);
+  };
+
+  const handleExecuteClear = async () => {
+    setIsClearModalOpen(false);
+    setSaving(true);
+    try {
+      const updated = await sqlDb.clearDepartmentItems(
+        currentReport.id,
+        activeDeptKey,
+        {
+          clearTopics: clearOption === 'topics',
+          clearMetrics: clearOption === 'metrics',
+          clearAll: clearOption === 'all',
+        },
+        currentUser
+      );
+      if (clearOption === 'topics' || clearOption === 'all') {
+        setBulletActivities([]);
+        setSubBulletSections([]);
+      }
+      if (clearOption === 'metrics' || clearOption === 'all') {
+        setMetrics([]);
+        setSubMetrics([]);
+      }
+      onReportUpdated(updated);
+      setSaveFeedback('Itens limpos e persistidos com sucesso no banco de dados!');
+      setTimeout(() => setSaveFeedback(null), 4000);
+    } catch (err: any) {
+      alert(`Erro ao limpar itens: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleSaveAll = async () => {
     if (!canAccessActiveDept) {
@@ -518,6 +569,45 @@ export const UserPortal: React.FC<Props> = ({
             <span className="text-[10px] text-emerald-600 font-mono">Trilha de Auditoria Gravada</span>
           </div>
         )}
+
+        {/* Department Description Banner & Action Buttons */}
+        <div className="mt-4 pt-3.5 border-t border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-3 bg-gray-50/80 p-3.5 rounded-xl border border-gray-200">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">
+              <span>Descrição Oficial do Setor:</span>
+            </div>
+            <p className="text-xs sm:text-sm text-gray-800 italic break-words font-medium">
+              "{sectorDescription || 'Nenhuma descrição cadastrada para este departamento.'}"
+            </p>
+          </div>
+
+          {!isReadOnly && (
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setEditDescInput(sectorDescription);
+                  setIsEditDescModalOpen(true);
+                }}
+                className="px-3 py-1.5 text-xs font-bold text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                title="Alterar ou editar a descrição institucional deste departamento"
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>Editar Descrição</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsClearModalOpen(true)}
+                className="px-3 py-1.5 text-xs font-bold text-red-700 hover:text-red-900 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                title="Limpar tópicos ou indicadores inseridos deste departamento"
+              >
+                <Eraser className="w-3.5 h-3.5 text-red-600" />
+                <span>Limpar Itens Inseridos</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Financial E2EE Notice Bar */}
@@ -746,7 +836,166 @@ export const UserPortal: React.FC<Props> = ({
       )}
 
       {/* ========================================================================= */}
-      {/* 1. Tabular Metrics (Indicadores & Quantitativos com Opção de Calendário) */}
+      {/* 1. TÓPICOS & ATIVIDADES REALIZADAS (COLOCADO NO INÍCIO)                   */}
+      {/* ========================================================================= */}
+      <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <div>
+            <h3 className="text-sm md:text-base font-bold text-gray-900 flex items-center gap-2">
+              <span>Tópicos & Atividades Realizadas ({bulletActivities.length})</span>
+              <span className="bg-blue-100 text-blue-800 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                Destaque Inicial
+              </span>
+            </h3>
+            <p className="text-xs text-gray-500">
+              {bulletActivities.length > 0
+                ? 'Cada atividade possui data de execução configurável no calendário'
+                : 'Nenhum tópico ou atividade cadastrado ainda para este departamento neste mês.'}
+            </p>
+          </div>
+          {bulletActivities.length > 0 && (
+            <span className="text-[11px] text-gray-500 font-medium">
+              Altere os textos ou selecione a data correspondente
+            </span>
+          )}
+        </div>
+
+        {bulletActivities.length > 0 ? (
+          <div className="space-y-2.5 max-h-[450px] overflow-y-auto pr-1">
+            {bulletActivities.map((act, idx) => {
+              const { hasDate, date, text } = extractDateAndText(act);
+              return (
+                <div
+                  key={idx}
+                  className="flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 rounded-lg bg-gray-50 border border-gray-200 hover:border-gray-300 transition-colors"
+                >
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold">
+                      {idx + 1}
+                    </span>
+
+                    {/* Calendar date picker for this specific activity item (Optional) */}
+                    {hasDate ? (
+                      <div className="inline-flex items-center gap-1 bg-white px-2 py-1 rounded border border-gray-300 shadow-2xs">
+                        <Calendar className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                        <input
+                          type="date"
+                          aria-label={`Data da atividade ${idx + 1}`}
+                          value={date}
+                          disabled={isReadOnly}
+                          onChange={(e) => handleUpdateActivityDate(idx, e.target.value)}
+                          className="text-[11px] font-mono font-semibold text-gray-700 bg-transparent focus:outline-none cursor-pointer disabled:cursor-not-allowed"
+                        />
+                        {!isReadOnly && (
+                          <button
+                            type="button"
+                            title="Remover data desta atividade"
+                            onClick={() => handleRemoveActivityDate(idx)}
+                            className="text-gray-400 hover:text-red-500 font-bold text-xs px-1 cursor-pointer"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
+                    ) : isReadOnly ? (
+                      <span className="text-[11px] text-gray-400 font-mono">—</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleAddActivityDate(idx)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded border border-dashed border-gray-300 hover:border-blue-300 transition-colors cursor-pointer"
+                        title="Vincular data do calendário a esta atividade"
+                      >
+                        <Calendar className="w-3 h-3" />
+                        <span>+ Data</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <input
+                    type="text"
+                    aria-label={`Texto da atividade ${idx + 1}`}
+                    value={text}
+                    disabled={isReadOnly}
+                    onChange={(e) => {
+                      const newArr = [...bulletActivities];
+                      if (hasDate && date) {
+                        const [yyyy, mm, dd] = date.split('-');
+                        newArr[idx] = `[${dd}/${mm}/${yyyy}] ${e.target.value}`;
+                      } else {
+                        newArr[idx] = e.target.value;
+                      }
+                      setBulletActivities(newArr);
+                    }}
+                    className={`flex-1 px-2 py-1 rounded sm:rounded-none text-xs md:text-sm font-medium ${
+                      isReadOnly
+                        ? 'bg-transparent text-gray-700 cursor-default border-none'
+                        : 'bg-white sm:bg-transparent border sm:border-none border-gray-300 text-gray-900 focus:outline-none focus:ring-1 sm:focus:ring-0 focus:ring-blue-500'
+                    }`}
+                  />
+
+                  {!isReadOnly ? (
+                    <button
+                      type="button"
+                      aria-label={`Remover atividade ${idx + 1}`}
+                      onClick={() => handleRemoveBullet(idx)}
+                      className="self-end sm:self-center p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  ) : (
+                    <span title="Modo somente leitura" className="self-end sm:self-center p-1">
+                      <Lock className="w-3.5 h-3.5 text-gray-300" />
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-4 rounded-xl bg-gray-50 border border-dashed border-gray-300 text-center">
+            <p className="text-xs text-gray-600">
+              Utilize o formulário <strong>"Adicionar Novo Item"</strong> acima selecionando <strong>"Tópico / Atividade Realizada"</strong> para lançar as ações executadas neste setor.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Sub-Bullet Sections se houver (Projetos & Presidência) */}
+      {subBulletSections.map((section, sIdx) => (
+        <div key={sIdx} className="bg-white rounded-xl shadow-xs border border-gray-200 p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm md:text-base font-bold text-gray-900">{section.title}</h3>
+            <span className="text-xs text-gray-500 font-medium">Sub-bloco de Ações</span>
+          </div>
+
+          <div className="space-y-2 mb-3">
+            {section.items.map((item, itemIdx) => (
+              <div key={itemIdx} className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />
+                <input
+                  type="text"
+                  value={item}
+                  disabled={isReadOnly}
+                  onChange={(e) => {
+                    const next = [...subBulletSections];
+                    next[sIdx].items[itemIdx] = e.target.value;
+                    setSubBulletSections(next);
+                  }}
+                  className={`flex-1 text-xs md:text-sm rounded px-2 py-1 ${
+                    isReadOnly
+                      ? 'bg-gray-50 text-gray-700 border-none cursor-default'
+                      : 'text-gray-900 border border-gray-200 bg-white'
+                  }`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* ========================================================================= */}
+      {/* 2. Tabular Metrics (Indicadores & Quantitativos com Opção de Calendário) */}
       {/* ========================================================================= */}
       {metrics.length > 0 && (
         <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5">
@@ -966,152 +1215,6 @@ export const UserPortal: React.FC<Props> = ({
         </div>
       ))}
 
-      {/* ========================================================================= */}
-      {/* 3. Bullet / Topic Activities com Opção de Calendário                      */}
-      {/* ========================================================================= */}
-      {bulletActivities.length > 0 && (
-        <div className="bg-white rounded-xl shadow-xs border border-gray-200 p-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
-            <div>
-              <h3 className="text-sm md:text-base font-bold text-gray-900">
-                Tópicos & Atividades Realizadas ({bulletActivities.length})
-              </h3>
-              <p className="text-xs text-gray-500">
-                Cada atividade possui data de execução configurável no calendário
-              </p>
-            </div>
-            <span className="text-[11px] text-gray-500 font-medium">
-              Altere os textos ou selecione a data correspondente
-            </span>
-          </div>
-
-          <div className="space-y-2.5 max-h-[450px] overflow-y-auto pr-1">
-            {bulletActivities.map((act, idx) => {
-              const { hasDate, date, text } = extractDateAndText(act);
-              return (
-                <div
-                  key={idx}
-                  className="flex flex-col sm:flex-row sm:items-center gap-2 p-2.5 rounded-lg bg-gray-50 border border-gray-200 hover:border-gray-300 transition-colors"
-                >
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="w-5 h-5 rounded-full bg-gray-200 text-gray-700 flex items-center justify-center text-[10px] font-bold">
-                      {idx + 1}
-                    </span>
-
-                    {/* Calendar date picker for this specific activity item (Optional) */}
-                    {hasDate ? (
-                      <div className="inline-flex items-center gap-1 bg-white px-2 py-1 rounded border border-gray-300 shadow-2xs">
-                        <Calendar className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
-                        <input
-                          type="date"
-                          aria-label={`Data da atividade ${idx + 1}`}
-                          value={date}
-                          disabled={isReadOnly}
-                          onChange={(e) => handleUpdateActivityDate(idx, e.target.value)}
-                          className="text-[11px] font-mono font-semibold text-gray-700 bg-transparent focus:outline-none cursor-pointer disabled:cursor-not-allowed"
-                        />
-                        {!isReadOnly && (
-                          <button
-                            type="button"
-                            title="Remover data desta atividade"
-                            onClick={() => handleRemoveActivityDate(idx)}
-                            className="text-gray-400 hover:text-red-500 font-bold text-xs px-1 cursor-pointer"
-                          >
-                            ×
-                          </button>
-                        )}
-                      </div>
-                    ) : isReadOnly ? (
-                      <span className="text-[11px] text-gray-400 font-mono">—</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleAddActivityDate(idx)}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded border border-dashed border-gray-300 hover:border-blue-300 transition-colors cursor-pointer"
-                        title="Vincular data do calendário a esta atividade"
-                      >
-                        <Calendar className="w-3 h-3" />
-                        <span>+ Data</span>
-                      </button>
-                    )}
-                  </div>
-
-                  <input
-                    type="text"
-                    aria-label={`Texto da atividade ${idx + 1}`}
-                    value={text}
-                    disabled={isReadOnly}
-                    onChange={(e) => {
-                      const newArr = [...bulletActivities];
-                      if (hasDate && date) {
-                        const [yyyy, mm, dd] = date.split('-');
-                        newArr[idx] = `[${dd}/${mm}/${yyyy}] ${e.target.value}`;
-                      } else {
-                        newArr[idx] = e.target.value;
-                      }
-                      setBulletActivities(newArr);
-                    }}
-                    className={`flex-1 px-2 py-1 rounded sm:rounded-none text-xs md:text-sm font-medium ${
-                      isReadOnly
-                        ? 'bg-transparent text-gray-700 cursor-default border-none'
-                        : 'bg-white sm:bg-transparent border sm:border-none border-gray-300 text-gray-900 focus:outline-none focus:ring-1 sm:focus:ring-0 focus:ring-blue-500'
-                    }`}
-                  />
-
-                  {!isReadOnly ? (
-                    <button
-                      type="button"
-                      aria-label={`Remover atividade ${idx + 1}`}
-                      onClick={() => handleRemoveBullet(idx)}
-                      className="self-end sm:self-center p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  ) : (
-                    <span title="Modo somente leitura" className="self-end sm:self-center p-1">
-                      <Lock className="w-3.5 h-3.5 text-gray-300" />
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* 4. Sub-Bullet Sections (Projetos & Presidência) */}
-      {subBulletSections.map((section, sIdx) => (
-        <div key={sIdx} className="bg-white rounded-xl shadow-xs border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm md:text-base font-bold text-gray-900">{section.title}</h3>
-            <span className="text-xs text-gray-500 font-medium">Sub-bloco de Ações</span>
-          </div>
-
-          <div className="space-y-2 mb-3">
-            {section.items.map((item, itemIdx) => (
-              <div key={itemIdx} className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />
-                <input
-                  type="text"
-                  value={item}
-                  disabled={isReadOnly}
-                  onChange={(e) => {
-                    const next = [...subBulletSections];
-                    next[sIdx].items[itemIdx] = e.target.value;
-                    setSubBulletSections(next);
-                  }}
-                  className={`flex-1 text-xs md:text-sm rounded px-2 py-1 ${
-                    isReadOnly
-                      ? 'bg-gray-50 text-gray-700 border-none cursor-default'
-                      : 'text-gray-900 border border-gray-200 bg-white'
-                  }`}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-
       {/* Bottom Save Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
         <span className="text-xs text-gray-500">
@@ -1131,6 +1234,151 @@ export const UserPortal: React.FC<Props> = ({
           {isReadOnly ? 'Somente Leitura' : 'Salvar Alterações do Setor'}
         </button>
       </div>
+
+      {/* Modal: Limpar Itens / Dados Inseridos */}
+      {isClearModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2 text-red-600 font-bold text-base">
+                <Trash2 className="w-5 h-5" />
+                <span>Limpar Itens Inseridos: {getSectorName(activeDeptKey)}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsClearModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-600 mt-3 leading-relaxed">
+              Escolha o que deseja limpar no setor <strong>{getSectorName(activeDeptKey)}</strong> para o mês de <strong>{currentReport.monthName} / {currentReport.year}</strong>:
+            </p>
+
+            <div className="space-y-2 mt-4 text-xs font-semibold">
+              <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="radio"
+                  name="clearOption"
+                  value="topics"
+                  checked={clearOption === 'topics'}
+                  onChange={() => setClearOption('topics')}
+                  className="text-red-600 focus:ring-red-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-gray-900 block font-bold">Limpar apenas Tópicos & Atividades ({bulletActivities.length})</span>
+                  <span className="text-gray-500 font-normal text-[11px]">Remove as descrições e tarefas executadas listadas no setor</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-3 rounded-xl border border-gray-200 hover:bg-gray-50 cursor-pointer">
+                <input
+                  type="radio"
+                  name="clearOption"
+                  value="metrics"
+                  checked={clearOption === 'metrics'}
+                  onChange={() => setClearOption('metrics')}
+                  className="text-red-600 focus:ring-red-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-gray-900 block font-bold">Limpar apenas Indicadores & Quantitativos ({metrics.length})</span>
+                  <span className="text-gray-500 font-normal text-[11px]">Remove as aferições e números quantitativos do setor</span>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-2.5 p-3 rounded-xl border-2 border-red-200 bg-red-50/50 hover:bg-red-50 cursor-pointer">
+                <input
+                  type="radio"
+                  name="clearOption"
+                  value="all"
+                  checked={clearOption === 'all'}
+                  onChange={() => setClearOption('all')}
+                  className="text-red-600 focus:ring-red-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-red-950 block font-bold">Limpar Todos os Dados Inseridos</span>
+                  <span className="text-red-800 font-normal text-[11px]">Remove tanto as atividades quanto os indicadores deste setor</span>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 mt-6 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setIsClearModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 rounded-xl cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteClear}
+                className="px-4 py-2 text-xs font-bold bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                Confirmar Limpeza
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar Descrição do Departamento */}
+      {isEditDescModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-gray-200 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+              <div className="flex items-center gap-2 text-blue-900 font-bold text-base">
+                <Edit3 className="w-5 h-5 text-blue-600" />
+                <span>Editar Descrição: {getSectorName(activeDeptKey)}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditDescModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <label className="block text-xs font-bold text-gray-700">
+                Descrição Institucional / Atribuições do Setor:
+              </label>
+              <textarea
+                rows={4}
+                value={editDescInput}
+                onChange={(e) => setEditDescInput(e.target.value)}
+                placeholder="Descreva as responsabilidades, escopo e atribuições deste setor..."
+                className="w-full text-xs sm:text-sm p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
+              <p className="text-[11px] text-gray-500">
+                Esta descrição é atualizada no sistema e exibida no relatório oficial.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 mt-5 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setIsEditDescModalOpen(false)}
+                className="px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-100 rounded-xl cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveSectorDescription}
+                className="px-4 py-2 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
+              >
+                <Check className="w-3.5 h-3.5" />
+                Salvar Descrição
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

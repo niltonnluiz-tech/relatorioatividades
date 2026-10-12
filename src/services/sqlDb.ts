@@ -17,6 +17,7 @@ import {
 import { INITIAL_MONTHLY_REPORT, INITIAL_USERS } from '../data/initialData';
 import { getDefaultPermissionsForUser } from '../utils/permissions';
 import { calculateAuditHash } from './crypto';
+import { getSectorDescription, saveSectorDescription, getSectorName } from '../constants/sectors';
 
 const DB_STORAGE_KEY = 'CAMP_SQLITE_DB_SNAPSHOT_V1';
 const AUDIT_LOGS_STORAGE_KEY = 'CAMP_AUDIT_LOGS_CHAIN_V1';
@@ -147,6 +148,17 @@ class SqlDatabaseService {
       this.persistUsers();
     }
 
+    // Purge removed users: Priscila Laurindo and Elaine Serracine
+    const forbiddenNames = ['Priscila Laurindo', 'Elaine Serracine'];
+    const filteredUsers = this.users.filter((u) => {
+      const match = forbiddenNames.some((fn) => u.name && u.name.toLowerCase().includes(fn.toLowerCase()));
+      return !match && u.id !== 'user_captacao' && u.id !== 'user_ensino';
+    });
+    if (filteredUsers.length !== this.users.length) {
+      this.users = filteredUsers;
+      this.persistUsers();
+    }
+
     // Ensure any legacy 'admin' or 'Administração' department is migrated to 'ti' / 'Tecnologia (TI)'
     // and ensure all users have department & report permissions properly populated
     let usersMigrated = false;
@@ -194,6 +206,52 @@ class SqlDatabaseService {
       }
     } else {
       this.memoryReports = { [INITIAL_MONTHLY_REPORT.id]: INITIAL_MONTHLY_REPORT };
+      this.persistReports();
+    }
+
+    // Ensure all registered departments exist in reports and update any legacy coordinator names
+    let reportsUpdated = false;
+    Object.values(this.memoryReports).forEach((rep) => {
+      if (rep.departments) {
+        if (rep.departments.captacao && rep.departments.captacao.coordinatorName?.includes('Priscila')) {
+          rep.departments.captacao.coordinatorName = 'Coordenação de Captação';
+          rep.departments.captacao.coordinatorEmail = 'captacao@campsantoandre.org.br';
+          rep.departments.captacao.modifiedBy = 'Coordenação de Captação';
+          rep.departments.captacao.coordinatorAvatar = '';
+          reportsUpdated = true;
+        }
+        if (rep.departments.ensino && rep.departments.ensino.coordinatorName?.includes('Elaine Serracine')) {
+          rep.departments.ensino.coordinatorName = 'Coordenação Pedagógica';
+          rep.departments.ensino.coordinatorEmail = 'pedagogico@campsantoandre.org.br';
+          rep.departments.ensino.modifiedBy = 'Coordenação Pedagógica';
+          rep.departments.ensino.coordinatorAvatar = '';
+          reportsUpdated = true;
+        }
+        // Ensure newly registered departments exist from INITIAL_MONTHLY_REPORT
+        const initialDepts = INITIAL_MONTHLY_REPORT.departments;
+        if (!rep.departments.coordenador_administrativo && initialDepts.coordenador_administrativo) {
+          rep.departments.coordenador_administrativo = initialDepts.coordenador_administrativo;
+          reportsUpdated = true;
+        }
+        if (!rep.departments.estagio && initialDepts.estagio) {
+          rep.departments.estagio = initialDepts.estagio;
+          reportsUpdated = true;
+        }
+        if (!rep.departments.pedagogico && (initialDepts.pedagogico || rep.departments.ensino)) {
+          rep.departments.pedagogico = initialDepts.pedagogico || rep.departments.ensino;
+          reportsUpdated = true;
+        }
+        if (!rep.departments.psicologia && initialDepts.psicologia) {
+          rep.departments.psicologia = initialDepts.psicologia;
+          reportsUpdated = true;
+        }
+        if (!rep.departments.social && initialDepts.social) {
+          rep.departments.social = initialDepts.social;
+          reportsUpdated = true;
+        }
+      }
+    });
+    if (reportsUpdated) {
       this.persistReports();
     }
 
@@ -459,6 +517,93 @@ class SqlDatabaseService {
     });
 
     return report;
+  }
+
+  public async clearDepartmentItems(
+    reportId: string,
+    departmentId: string,
+    options: { clearTopics?: boolean; clearMetrics?: boolean; clearAll?: boolean },
+    currentUser: User
+  ): Promise<MonthlyReport> {
+    this.init();
+    const report = this.getReport(reportId);
+    let dept = report.departments[departmentId as keyof typeof report.departments];
+
+    if (!dept) {
+      dept = {
+        departmentId: departmentId as any,
+        coordinatorName: currentUser.name,
+        coordinatorTitle: getSectorName(departmentId),
+        coordinatorPhone: currentUser.phone || '(11) 2842-2470',
+        coordinatorEmail: currentUser.email || '',
+        coordinatorAvatar: currentUser.avatarUrl || '',
+        status: 'rascunho',
+        lastModified: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        modifiedBy: currentUser.name,
+        metrics: [],
+        bulletActivities: [],
+      };
+      report.departments[departmentId as keyof typeof report.departments] = dept;
+    }
+
+    const clearedParts: string[] = [];
+    if (options.clearAll || options.clearTopics) {
+      dept.bulletActivities = [];
+      dept.activityItems = [];
+      clearedParts.push('tópicos e atividades');
+    }
+
+    if (options.clearAll || options.clearMetrics) {
+      dept.metrics = [];
+      if (dept.subMetrics) {
+        dept.subMetrics = dept.subMetrics.map((sm) => ({ ...sm, items: [] }));
+      }
+      clearedParts.push('indicadores e métricas');
+    }
+
+    dept.lastModified = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    dept.modifiedBy = currentUser.name;
+
+    this.persistReports();
+
+    await this.addAuditLog({
+      userId: currentUser.id,
+      userName: currentUser.name,
+      departmentId: departmentId as any,
+      action: 'BULLET_ACTIVITY_UPDATE',
+      details: `Limpeza de itens realizada no departamento ${getSectorName(departmentId)}: ${clearedParts.join(', ')}`,
+      previousValue: 'Dados ativos',
+      newValue: 'Itens limpos',
+      ipAddress: '192.168.1.100',
+      userAgent: navigator.userAgent,
+    });
+
+    return report;
+  }
+
+  public getSectorDescription(departmentId: string): string {
+    return getSectorDescription(departmentId);
+  }
+
+  public async updateSectorDescription(
+    departmentId: string,
+    description: string,
+    currentUser: User
+  ): Promise<void> {
+    const prev = getSectorDescription(departmentId);
+    saveSectorDescription(departmentId, description);
+
+    await this.addAuditLog({
+      userId: currentUser.id,
+      userName: currentUser.name,
+      departmentId: departmentId as any,
+      action: 'USER_UPDATE',
+      details: `Descrição do departamento/setor ${getSectorName(departmentId)} alterada para: "${description}"`,
+      previousValue: prev,
+      newValue: description,
+      ipAddress: '192.168.1.100',
+      userAgent: navigator.userAgent,
+    });
   }
 
   public persistReports() {

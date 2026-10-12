@@ -920,6 +920,41 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
   doc.setFontSize(9.5);
   doc.text(pres.customNotes || 'Estamos captando novas doações e parcerias. Seja um doador você também.', 20, presY);
 
+  // Adiciona página do Coordenador Administrativo se cadastrado
+  if (report.departments.coordenador_administrativo) {
+    const ca = report.departments.coordenador_administrativo;
+    doc.addPage();
+    drawPageHeader('Coordenador Administrativo');
+    drawCoordinatorCard(ca.coordinatorName, ca.coordinatorTitle, ca.coordinatorPhone, ca.coordinatorEmail, 40);
+    let caY = 92;
+    if (ca.bulletActivities && ca.bulletActivities.length > 0) {
+      doc.setTextColor(11, 15, 25);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.text('Atividades e Ações Realizadas', 20, caY);
+      caY += 7;
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.8);
+      ca.bulletActivities.forEach((act) => {
+        doc.circle(22, caY - 1, 0.8, 'F');
+        const lines = doc.splitTextToSize(act, 160);
+        doc.text(lines, 26, caY);
+        caY += lines.length * 4.6 + 2.5;
+      });
+    }
+  }
+
+  // Numeração de páginas dinâmica no rodapé oficial do PDF
+  const totalPdfPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPdfPages; i++) {
+    doc.setPage(i);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.setTextColor(120, 120, 120);
+    doc.text('CAMP Piero Pollone - Santo André', 14, 289);
+    doc.text(`Pág. ${i} de ${totalPdfPages}`, 196, 289, { align: 'right' });
+  }
+
   return doc;
 }
 
