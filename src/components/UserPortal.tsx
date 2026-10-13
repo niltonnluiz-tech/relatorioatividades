@@ -32,9 +32,11 @@ import {
   Edit3,
   ShieldAlert,
   AlertTriangle,
-  Eraser
+  Eraser,
+  Upload
 } from 'lucide-react';
 import { OFFICIAL_SECTORS, getSortedSectors, getSectorName, getSectorDescription, saveSectorDescription } from '../constants/sectors';
+import { ImportItemsModal } from './ImportItemsModal';
 import { 
   canUserAccessDepartment, 
   canUserViewDepartment, 
@@ -153,6 +155,7 @@ export const UserPortal: React.FC<Props> = ({
   // Clear items state
   const [isClearModalOpen, setIsClearModalOpen] = useState(false);
   const [clearOption, setClearOption] = useState<'topics' | 'metrics' | 'all'>('topics');
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   // Sync state whenever activeDeptKey changes
   React.useEffect(() => {
@@ -324,72 +327,122 @@ export const UserPortal: React.FC<Props> = ({
     };
   };
 
-  const handleUpdateActivityDate = (idx: number, newIsoDate: string) => {
-    const currentAct = bulletActivities[idx];
-    const { text } = extractDateAndText(currentAct);
-    if (!newIsoDate) {
-      setBulletActivities((prev) => {
-        const next = [...prev];
-        next[idx] = text;
-        return next;
-      });
+  const persistChangesToDatabase = async (
+    newMetrics: MetricItem[],
+    newSubMetrics: any[],
+    newBulletActivities: string[],
+    newSubBulletSections: any[],
+    newNotes: string,
+    newStatus: string,
+    successMessage: string
+  ) => {
+    if (!canAccessActiveDept) {
+      setSaveFeedback('Ação Bloqueada: Seu perfil possui permissão apenas de visualização neste setor.');
       return;
     }
-    const [yyyy, mm, dd] = newIsoDate.split('-');
-    const updatedAct = `[${dd}/${mm}/${yyyy}] ${text}`;
-    setBulletActivities((prev) => {
-      const next = [...prev];
-      next[idx] = updatedAct;
-      return next;
-    });
+    setSaving(true);
+    try {
+      const updated = await sqlDb.updateDepartmentData(
+        currentReport.id,
+        activeDeptKey,
+        {
+          metrics: newMetrics,
+          subMetrics: newSubMetrics,
+          bulletActivities: newBulletActivities,
+          subBulletSections: newSubBulletSections,
+          customNotes: newNotes,
+          status: newStatus as any,
+        },
+        currentUser
+      );
+
+      if (!navigator.onLine) {
+        offlineSync.enqueue('UPDATE_DEPARTMENT', {
+          reportId: currentReport.id,
+          departmentId: activeDeptKey,
+        });
+      }
+
+      if (supabaseService.isConfigured() && supabaseService.getConfig().autoSync) {
+        supabaseService.pushLocalDataToSupabase().catch((err) => {
+          console.warn('Sync em segundo plano para Supabase:', err);
+        });
+      }
+
+      onReportUpdated({ ...updated, departments: { ...updated.departments } });
+      setSaveFeedback(successMessage);
+      setTimeout(() => setSaveFeedback(null), 4000);
+    } catch (e: any) {
+      setSaveFeedback(`Erro ao salvar: ${e.message || 'Falha inesperada'}`);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleRemoveActivityDate = (idx: number) => {
+  const handleUpdateActivityDate = async (idx: number, newIsoDate: string) => {
     const currentAct = bulletActivities[idx];
     const { text } = extractDateAndText(currentAct);
-    setBulletActivities((prev) => {
-      const next = [...prev];
-      next[idx] = text;
-      return next;
-    });
+    let nextActs = [...bulletActivities];
+    if (!newIsoDate) {
+      nextActs[idx] = text;
+    } else {
+      const [yyyy, mm, dd] = newIsoDate.split('-');
+      nextActs[idx] = `[${dd}/${mm}/${yyyy}] ${text}`;
+    }
+    setBulletActivities(nextActs);
+    await persistChangesToDatabase(metrics, subMetrics, nextActs, subBulletSections, customNotes, status, 'Data da atividade atualizada e salva com sucesso!');
   };
 
-  const handleAddActivityDate = (idx: number) => {
-    handleUpdateActivityDate(idx, defaultReportDate);
+  const handleRemoveActivityDate = async (idx: number) => {
+    const currentAct = bulletActivities[idx];
+    const { text } = extractDateAndText(currentAct);
+    let nextActs = [...bulletActivities];
+    nextActs[idx] = text;
+    setBulletActivities(nextActs);
+    await persistChangesToDatabase(metrics, subMetrics, nextActs, subBulletSections, customNotes, status, 'Data da atividade removida e salva com sucesso!');
   };
 
-  const handleRemoveBullet = (idx: number) => {
-    setBulletActivities((prev) => prev.filter((_, i) => i !== idx));
+  const handleAddActivityDate = async (idx: number) => {
+    await handleUpdateActivityDate(idx, defaultReportDate);
   };
 
-  const handleRemoveMetric = (id: string) => {
-    setMetrics((prev) => prev.filter((m) => m.id !== id));
+  const handleRemoveBullet = async (idx: number) => {
+    const nextActs = bulletActivities.filter((_, i) => i !== idx);
+    setBulletActivities(nextActs);
+    await persistChangesToDatabase(metrics, subMetrics, nextActs, subBulletSections, customNotes, status, 'Tópico removido e salvo com sucesso no relatório!');
+  };
+
+  const handleRemoveMetric = async (id: string) => {
+    const nextMetrics = metrics.filter((m) => m.id !== id);
+    setMetrics(nextMetrics);
+    await persistChangesToDatabase(nextMetrics, subMetrics, bulletActivities, subBulletSections, customNotes, status, 'Indicador removido e salvo com sucesso no relatório!');
   };
 
   // Handler for adding new items (either Topic/Activity or Value/Quantity)
-  const handleAddNewItem = () => {
+  const handleAddNewItem = async () => {
     if (!newItemDescription.trim()) {
       setSaveFeedback('Por favor, informe a descrição ou título do item.');
       return;
     }
 
+    let nextActivities = [...bulletActivities];
+    let nextMetrics = [...metrics];
+    let msg = '';
+
     if (newItemType === 'topic') {
-      // Add topic / activity
       let formattedDate = '';
       if (useItemDate && newItemDate) {
         const [yyyy, mm, dd] = newItemDate.split('-');
         formattedDate = `[${dd}/${mm}/${yyyy}] `;
       }
       const textToAppend = `${formattedDate}${newItemDescription.trim()};`;
-      setBulletActivities((prev) => [...prev, textToAppend]);
+      nextActivities.push(textToAppend);
+      setBulletActivities(nextActivities);
       setNewItemDescription('');
-      setSaveFeedback(
-        useItemDate
-          ? 'Novo tópico adicionado com data do calendário! Clique em "Salvar Alterações".'
-          : 'Novo tópico adicionado (sem data)! Clique em "Salvar Alterações".'
-      );
+      msg = useItemDate
+        ? 'Novo tópico adicionado com data e salvo com sucesso no relatório!'
+        : 'Novo tópico adicionado e salvo com sucesso no relatório!';
     } else {
-      // Add value / quantity metric
       const rawValStr = String(newItemValue).trim();
       let finalVal: number | string = rawValStr;
       if (newItemUnit === 'currency') {
@@ -413,15 +466,47 @@ export const UserPortal: React.FC<Props> = ({
         unitType: newItemUnit,
       };
 
-      setMetrics((prev) => [...prev, newMetricItem]);
+      nextMetrics.push(newMetricItem);
+      setMetrics(nextMetrics);
       setNewItemDescription('');
       setNewItemValue('');
-      setSaveFeedback(
-        useItemDate
-          ? 'Novo item de valor adicionado com data! Clique em "Salvar Alterações".'
-          : 'Novo item de valor adicionado (sem data)! Clique em "Salvar Alterações".'
-      );
+      msg = useItemDate
+        ? 'Novo indicador adicionado com data e salvo com sucesso no relatório!'
+        : 'Novo indicador adicionado e salvo com sucesso no relatório!';
     }
+
+    await persistChangesToDatabase(
+      nextMetrics,
+      subMetrics,
+      nextActivities,
+      subBulletSections,
+      customNotes,
+      status,
+      msg
+    );
+  };
+
+  const handleImportItems = async (
+    newActivities: string[],
+    newMetrics: MetricItem[],
+    mode: 'append' | 'replace'
+  ) => {
+    const finalActivities = mode === 'replace' ? newActivities : [...bulletActivities, ...newActivities];
+    const finalMetrics = mode === 'replace' ? newMetrics : [...metrics, ...newMetrics];
+
+    setBulletActivities(finalActivities);
+    setMetrics(finalMetrics);
+    setIsImportModalOpen(false);
+
+    await persistChangesToDatabase(
+      finalMetrics,
+      subMetrics,
+      finalActivities,
+      subBulletSections,
+      customNotes,
+      status,
+      `Importação de ${newActivities.length} atividades e ${newMetrics.length} métricas realizada e salva com sucesso!`
+    );
   };
 
   if (isAccessDenied) {
@@ -903,8 +988,16 @@ export const UserPortal: React.FC<Props> = ({
                   </>
                 )}
 
-                {/* Submit button */}
-                <div className={newItemType === 'topic' ? 'sm:col-span-2' : 'sm:col-span-12 sm:flex sm:justify-end sm:mt-1'}>
+                {/* Submit button & Import button */}
+                <div className={newItemType === 'topic' ? 'sm:col-span-2 flex flex-col sm:flex-row gap-2' : 'sm:col-span-12 sm:flex sm:justify-end gap-2 sm:mt-1'}>
+                  <button
+                    type="button"
+                    onClick={() => setIsImportModalOpen(true)}
+                    className="w-full sm:w-auto px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors whitespace-nowrap"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Importar Planilha / Texto
+                  </button>
                   <button
                     type="button"
                     onClick={handleAddNewItem}
@@ -1465,6 +1558,17 @@ export const UserPortal: React.FC<Props> = ({
           </div>
         </div>
       )}
+
+      {/* Import Items Modal (Spreadsheet & Text) */}
+      <ImportItemsModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        departmentId={activeDeptKey}
+        departmentName={getSectorName(activeDeptKey)}
+        currentActivities={bulletActivities}
+        currentMetrics={metrics}
+        onImport={handleImportItems}
+      />
     </div>
   );
 };
