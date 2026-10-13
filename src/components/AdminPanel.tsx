@@ -660,7 +660,26 @@ export const AdminPanel: React.FC<Props> = ({
                       <span className="font-mono text-gray-400 mr-2">#{idx + 1}</span>
                       {dept.coordinatorTitle}
                     </td>
-                    <td className="p-2.5 text-gray-700">{dept.coordinatorName}</td>
+                    <td className="p-2.5 text-gray-700">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-100 border border-gray-200 shrink-0 flex items-center justify-center font-bold text-xs text-gray-600 shadow-2xs">
+                          {dept.coordinatorAvatar ? (
+                            <img
+                              src={dept.coordinatorAvatar}
+                              alt={dept.coordinatorName}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            dept.coordinatorName.split(' ').map((n) => n[0]).slice(0, 2).join('')
+                          )}
+                        </div>
+                        <div>
+                          <span className="font-semibold text-gray-900 block">{dept.coordinatorName}</span>
+                          <span className="text-[11px] text-gray-500 block">{dept.coordinatorEmail}</span>
+                        </div>
+                      </div>
+                    </td>
                     <td className="p-2.5 text-center">
                       <span
                         className={`px-2 py-0.5 rounded text-[11px] font-bold ${

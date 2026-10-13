@@ -142,34 +142,55 @@ export const ReportPagePreview: React.FC<Props> = ({
     phone: string,
     email: string,
     avatarUrl?: string
-  ) => (
-    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3.5 sm:gap-5 my-4 sm:my-6 p-3.5 sm:p-4 rounded-xl bg-gray-50 border border-gray-100">
-      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-gray-200 bg-gray-200 flex-shrink-0 shadow-sm flex items-center justify-center text-gray-600 font-bold text-lg sm:text-xl">
-        {avatarUrl ? (
-          <img
-            src={avatarUrl}
-            alt={name}
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          name.split(' ').map((n) => n[0]).slice(0, 2).join('')
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <h3 className="text-lg sm:text-xl font-bold text-[#0B0F19] leading-snug break-words">{name}</h3>
-        <p className="text-xs sm:text-sm font-semibold text-gray-600 mb-1.5">{title}</p>
-        <div className="space-y-0.5 text-xs">
-          <p className="flex items-center gap-2 font-medium text-gray-800">
-            <span className="font-bold">Tel:</span> {phone}
-          </p>
-          <p className="flex items-center gap-2 font-medium text-blue-700 break-all">
-            <span className="font-bold text-gray-800">Email:</span> {email}
-          </p>
+  ) => {
+    // Resolve fallback avatar if not provided
+    let resolvedAvatar = avatarUrl && avatarUrl.trim().length > 0 ? avatarUrl : '';
+    if (!resolvedAvatar) {
+      const allUsers = sqlDb.getUsers();
+      const matched = allUsers.find(
+        (u) =>
+          (u.name && name && u.name.toLowerCase() === name.toLowerCase()) ||
+          (u.email && email && u.email.toLowerCase() === email.toLowerCase()) ||
+          (u.position && title && u.position.toLowerCase() === title.toLowerCase())
+      );
+      if (matched?.avatarUrl) {
+        resolvedAvatar = matched.avatarUrl;
+      }
+    }
+
+    return (
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3.5 sm:gap-5 my-4 sm:my-6 p-3.5 sm:p-4 rounded-xl bg-gray-50 border border-gray-100">
+        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-gray-200 bg-gray-200 flex-shrink-0 shadow-sm flex items-center justify-center text-gray-600 font-bold text-lg sm:text-xl">
+          {resolvedAvatar ? (
+            <img
+              src={resolvedAvatar}
+              alt={name}
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = 'none';
+              }}
+            />
+          ) : null}
+          {!resolvedAvatar && (
+            <span>{name.split(' ').map((n) => n[0]).slice(0, 2).join('')}</span>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-lg sm:text-xl font-bold text-[#0B0F19] leading-snug break-words">{name}</h3>
+          <p className="text-xs sm:text-sm font-semibold text-gray-600 mb-1.5">{title}</p>
+          <div className="space-y-0.5 text-xs">
+            <p className="flex items-center gap-2 font-medium text-gray-800">
+              <span className="font-bold">Tel:</span> {phone}
+            </p>
+            <p className="flex items-center gap-2 font-medium text-blue-700 break-all">
+              <span className="font-bold text-gray-800">Email:</span> {email}
+            </p>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Helper to render bullet activities with formatted date badge if present
   const renderBulletActivity = (act: string, idx: number) => {

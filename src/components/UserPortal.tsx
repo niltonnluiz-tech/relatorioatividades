@@ -97,6 +97,35 @@ export const UserPortal: React.FC<Props> = ({
 
   const activeDept = currentReport.departments[activeDeptKey] || currentReport.departments.coordenador_administrativo;
 
+  // Resolve the registered coordinator user assigned to this active department
+  const activeDeptCoordinator = React.useMemo(() => {
+    if (currentUser.departmentId === activeDeptKey) {
+      return currentUser;
+    }
+    const allUsers = sqlDb.getUsers();
+    let found = allUsers.find((u) => u.departmentId === activeDeptKey);
+    if (!found) {
+      if (activeDeptKey === 'pedagogico') found = allUsers.find(u => u.departmentId === 'ensino');
+      else if (activeDeptKey === 'psicologia' || activeDeptKey === 'social') found = allUsers.find(u => u.departmentId === 'psicologia_social');
+      else if ((activeDeptKey as string) === 'operacoes') found = allUsers.find(u => u.id === 'user_operacoes' || u.departmentId === 'limpeza');
+      else if (activeDeptKey === 'coordenador_administrativo' || activeDeptKey === 'admin') found = allUsers.find(u => u.id === 'user_admin' || u.id === 'user_coord_admin');
+    }
+    return found || null;
+  }, [currentUser, activeDeptKey]);
+
+  // Determine avatar and name to display for this department
+  const coordinatorAvatarToDisplay =
+    activeDept?.coordinatorAvatar ||
+    activeDeptCoordinator?.avatarUrl ||
+    (currentUser.departmentId === activeDeptKey ? currentUser.avatarUrl : '');
+
+  const coordinatorNameToDisplay =
+    activeDept?.coordinatorName ||
+    activeDeptCoordinator?.name ||
+    currentUser.name;
+
+  const isViewingOtherDept = isAdmin && currentUser.departmentId !== activeDeptKey;
+
   // Local state for editing
   const [metrics, setMetrics] = useState<MetricItem[]>(activeDept?.metrics ? [...activeDept.metrics] : []);
   const [subMetrics, setSubMetrics] = useState(activeDept?.subMetrics ? JSON.parse(JSON.stringify(activeDept.subMetrics)) : []);
@@ -443,23 +472,47 @@ export const UserPortal: React.FC<Props> = ({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3.5 sm:gap-4">
             <div className="relative group shrink-0">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full overflow-hidden border-2 border-gray-200 bg-gray-100 flex-shrink-0 flex items-center justify-center font-bold text-gray-700 shadow-xs">
-                {currentUser.avatarUrl ? (
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-blue-200 bg-gray-100 flex-shrink-0 flex items-center justify-center font-bold text-gray-700 shadow-sm">
+                {coordinatorAvatarToDisplay ? (
+                  <img
+                    src={coordinatorAvatarToDisplay}
+                    alt={coordinatorNameToDisplay}
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : null}
+                {!coordinatorAvatarToDisplay && (
+                  <span className="text-sm font-black text-blue-900 bg-blue-100 w-full h-full flex items-center justify-center">
+                    {coordinatorNameToDisplay.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                  </span>
+                )}
+              </div>
+              {/* If admin is viewing another department, display currentUser avatar badge in the corner */}
+              {isViewingOtherDept && currentUser.avatarUrl && (
+                <div
+                  title={`Conectado como Administrador: ${currentUser.name}`}
+                  className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full overflow-hidden border-2 border-white shadow-xs bg-purple-600 flex items-center justify-center"
+                >
                   <img
                     src={currentUser.avatarUrl}
                     alt={currentUser.name}
                     className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
                   />
-                ) : (
-                  currentUser.name.split(' ').map((n) => n[0]).slice(0, 2).join('')
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-base sm:text-lg md:text-xl font-bold text-gray-900 break-words">{activeDept.coordinatorTitle}</h2>
+                {isViewingOtherDept && (
+                  <span className="bg-purple-100 text-purple-800 border border-purple-200 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shadow-2xs">
+                    <ShieldCheck className="w-3 h-3 text-purple-600" /> Visão Admin (Gestão Interdepartamental)
+                  </span>
+                )}
                 {onOpenMonthSelector ? (
                   <button
                     type="button"

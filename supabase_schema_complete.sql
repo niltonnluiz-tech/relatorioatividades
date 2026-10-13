@@ -1163,7 +1163,7 @@ BEGIN
 
     -- 1. Coordenador Administrativo & Administrador (Nilton Luiz)
     INSERT INTO public.users (
-        id, name, email, phone, role, department_id, department_name, position, permissions
+        id, name, email, phone, role, department_id, department_name, position, avatar_url, permissions
     ) VALUES (
         'user_admin',
         'Nilton Luiz',
@@ -1173,11 +1173,13 @@ BEGIN
         'coordenador_administrativo',
         'Coordenador Administrativo',
         'Coordenador Administrativo',
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
         '{"canEditFinancials": true, "canExportPdf": true, "canExportExcel": true, "canManageUsers": true, "canViewAuditLogs": true, "canChangeReportStatus": true, "canManageSchedules": true}'::jsonb
     ) ON CONFLICT (id) DO UPDATE SET
         department_id = 'coordenador_administrativo',
         department_name = 'Coordenador Administrativo',
-        position = 'Coordenador Administrativo';
+        position = 'Coordenador Administrativo',
+        avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_admin', v_default_hash)
@@ -1185,7 +1187,7 @@ BEGIN
 
     -- Coordenação Administrativa institucional
     INSERT INTO public.users (
-        id, name, email, phone, role, department_id, department_name, position
+        id, name, email, phone, role, department_id, department_name, position, avatar_url
     ) VALUES (
         'user_coord_admin',
         'Coordenação Administrativa',
@@ -1194,127 +1196,129 @@ BEGIN
         'coordinator',
         'coordenador_administrativo',
         'Coordenador Administrativo',
-        'Coordenador(a) Administrativo(a)'
+        'Coordenador(a) Administrativo(a)',
+        'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80'
     ) ON CONFLICT (id) DO UPDATE SET
         department_id = 'coordenador_administrativo',
-        department_name = 'Coordenador Administrativo';
+        department_name = 'Coordenador Administrativo',
+        avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_coord_admin', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 2. RH (Rosangela Tavares)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
-    VALUES ('user_rh', 'Rosangela Tavares', 'rosangela.tavares@campsantoandre.org.br', '(11) 93361-8355', 'coordinator', 'rh', 'Gestão de Pessoas (RH)', 'Coordenadora de Gestão de Pessoas')
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url)
+    VALUES ('user_rh', 'Rosangela Tavares', 'rosangela.tavares@campsantoandre.org.br', '(11) 93361-8355', 'coordinator', 'rh', 'Gestão de Pessoas (RH)', 'Coordenadora de Gestão de Pessoas', 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80')
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_rh', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 3. Financeiro (Elaine Pereira)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, permissions)
-    VALUES ('user_fin', 'Elaine Pereira', 'elaine.moreira@campsantoandre.org.br', '(11) 91631-1746', 'coordinator', 'financeiro', 'Financeiro', 'Coordenadora Financeiro', '{"canEditFinancials": true, "canExportPdf": true, "canExportExcel": true}'::jsonb)
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url, permissions)
+    VALUES ('user_fin', 'Elaine Pereira', 'elaine.moreira@campsantoandre.org.br', '(11) 91631-1746', 'coordinator', 'financeiro', 'Financeiro', 'Coordenadora Financeiro', 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80', '{"canEditFinancials": true, "canExportPdf": true, "canExportExcel": true}'::jsonb)
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_fin', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 4. Captação (Priscila Laurindo)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
-    VALUES ('user_captacao', 'Priscila Laurindo', 'priscila.laurindo@campsantoandre.org.br', '(11) 99122-1637', 'coordinator', 'captacao', 'Captação de Recursos', 'Coordenadora - Captação de Recursos')
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url)
+    VALUES ('user_captacao', 'Priscila Laurindo', 'priscila.laurindo@campsantoandre.org.br', '(11) 99122-1637', 'coordinator', 'captacao', 'Captação de Recursos', 'Coordenadora - Captação de Recursos', 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80')
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_captacao', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 5. Ensino (Elaine Serracine)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
-    VALUES ('user_ensino', 'Elaine Serracine', 'elaine.serracine@campsantoandre.org.br', '(11) 93369-0769', 'coordinator', 'ensino', 'Ensino (Pedagógico)', 'Coordenadora Pedagógica')
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url)
+    VALUES ('user_ensino', 'Elaine Serracine', 'elaine.serracine@campsantoandre.org.br', '(11) 93369-0769', 'coordinator', 'ensino', 'Ensino (Pedagógico)', 'Coordenadora Pedagógica', 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=150&auto=format&fit=crop&q=80')
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_ensino', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 6. Psicologia (Aline Batista)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
-    VALUES ('user_psico', 'Aline Batista', 'aline.batista@campsantoandre.org.br', '(11) 91631-1747', 'coordinator', 'psicologia_social', 'Psicologia & Social', 'Psicóloga Responsável')
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url)
+    VALUES ('user_psico', 'Aline Batista', 'aline.batista@campsantoandre.org.br', '(11) 91631-1747', 'coordinator', 'psicologia_social', 'Psicologia & Social', 'Psicóloga Responsável', 'https://images.unsplash.com/photo-1590650516494-0c8e4a4dd67e?w=150&auto=format&fit=crop&q=80')
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_psico', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 7. Limpeza (Fabiana Ribeiro)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
-    VALUES ('user_limpeza', 'Fabiana Ribeiro', 'fabiana.ribeiro@campsantoandre.org.br', '(11) 91631-1748', 'coordinator', 'limpeza', 'Limpeza e Zeladoria', 'Encarregada de Higienização')
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url)
+    VALUES ('user_limpeza', 'Fabiana Ribeiro', 'fabiana.ribeiro@campsantoandre.org.br', '(11) 91631-1748', 'coordinator', 'limpeza', 'Limpeza e Zeladoria', 'Encarregada de Higienização', 'https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?w=150&auto=format&fit=crop&q=80')
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_limpeza', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 8. Projetos (Gisele Manholer)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
-    VALUES ('user_projetos', 'Gisele Manholer', 'gisele.manholer@campsantoandre.org.br', '(11) 91631-1749', 'coordinator', 'projetos', 'Gerência de Projetos', 'Gerente de Projetos Sociais')
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url)
+    VALUES ('user_projetos', 'Gisele Manholer', 'gisele.manholer@campsantoandre.org.br', '(11) 91631-1749', 'coordinator', 'projetos', 'Gerência de Projetos', 'Gerente de Projetos Sociais', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80')
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_projetos', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 9. Marketing (Camila Ribeiro)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
-    VALUES ('user_mkt', 'Camila Ribeiro', 'camila.ribeiro@campsantoandre.org.br', '(11) 91631-1750', 'coordinator', 'marketing', 'Marketing & Mídias', 'Coordenadora de Marketing e Comunicação')
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url)
+    VALUES ('user_mkt', 'Camila Ribeiro', 'camila.ribeiro@campsantoandre.org.br', '(11) 91631-1750', 'coordinator', 'marketing', 'Marketing & Mídias', 'Coordenadora de Marketing e Comunicação', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80')
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_mkt', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 10. Manutenção (Almir Gatti)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
-    VALUES ('user_manutencao', 'Almir Gatti', 'almir.gatti@campsantoandre.org.br', '(11) 91631-1751', 'coordinator', 'manutencao', 'Manutenção Predial', 'Supervisor de Obras e Manutenção')
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url)
+    VALUES ('user_manutencao', 'Almir Gatti', 'almir.gatti@campsantoandre.org.br', '(11) 91631-1751', 'coordinator', 'manutencao', 'Manutenção Predial', 'Supervisor de Obras e Manutenção', 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80')
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_manutencao', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 11. Gerência Geral (Gildete)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
-    VALUES ('user_gerencia', 'Gildete', 'gildete@campsantoandre.org.br', '(11) 91631-1752', 'coordinator', 'gerencia_geral', 'Gerência Geral', 'Gerente Executiva Institucional')
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url)
+    VALUES ('user_gerencia', 'Gildete', 'gildete@campsantoandre.org.br', '(11) 91631-1752', 'coordinator', 'gerencia_geral', 'Gerência Geral', 'Gerente Executiva Institucional', 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80')
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_gerencia', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 12. Cozinha (Luzia Santos)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
-    VALUES ('user_cozinha', 'Luzia Santos', 'luzia.santos@campsantoandre.org.br', '(11) 91631-1753', 'coordinator', 'cozinha', 'Cozinha & Nutrição', 'Encarregada de Nutrição e Alimentação')
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url)
+    VALUES ('user_cozinha', 'Luzia Santos', 'luzia.santos@campsantoandre.org.br', '(11) 91631-1753', 'coordinator', 'cozinha', 'Cozinha & Nutrição', 'Encarregada de Nutrição e Alimentação', 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80')
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_cozinha', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 13. Presidência (Dr. Roberto Pollone)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
-    VALUES ('user_presidencia', 'Dr. Roberto Pollone', 'presidencia@campsantoandre.org.br', '(11) 2842-2470', 'coordinator', 'presidencia', 'Presidência', 'Presidente da Diretoria Executiva')
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url)
+    VALUES ('user_presidencia', 'Dr. Roberto Pollone', 'presidencia@campsantoandre.org.br', '(11) 2842-2470', 'coordinator', 'presidencia', 'Presidência', 'Presidente da Diretoria Executiva', 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80')
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_presidencia', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 
     -- 14. Coordenação Operacional (Serviços Gerais, Limpeza, Cozinha)
-    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
-    VALUES ('user_operacoes', 'Coordenação Operacional', 'operacoes@campsantoandre.org.br', '(11) 2842-2470', 'staff', 'limpeza', 'Operações (Limpeza, Manutenção, Cozinha, MKT)', 'Líder Operacional e Serviços')
-    ON CONFLICT (id) DO NOTHING;
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position, avatar_url)
+    VALUES ('user_operacoes', 'Coordenação Operacional', 'operacoes@campsantoandre.org.br', '(11) 2842-2470', 'staff', 'limpeza', 'Operações (Limpeza, Manutenção, Cozinha, MKT)', 'Líder Operacional e Serviços', 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80')
+    ON CONFLICT (id) DO UPDATE SET avatar_url = EXCLUDED.avatar_url;
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_operacoes', v_default_hash)

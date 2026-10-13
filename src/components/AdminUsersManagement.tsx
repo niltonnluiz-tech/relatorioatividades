@@ -356,11 +356,22 @@ export const AdminUsersManagement: React.FC<Props> = ({ currentUser, onRefresh }
                       {/* User Info */}
                       <td className="p-4">
                         <div className="flex items-center gap-3">
-                          <img
-                            src={u.avatarUrl}
-                            alt={u.name}
-                            className="w-10 h-10 rounded-full object-cover border border-gray-200 shadow-2xs"
-                          />
+                          <div className="w-10 h-10 rounded-full bg-blue-100 border border-gray-200 overflow-hidden shrink-0 flex items-center justify-center font-bold text-xs text-blue-900 shadow-2xs">
+                            {u.avatarUrl ? (
+                              <img
+                                src={u.avatarUrl}
+                                alt={u.name}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
+                                }}
+                              />
+                            ) : null}
+                            {!u.avatarUrl && (
+                              <span>{u.name.split(' ').map((n) => n[0]).slice(0, 2).join('')}</span>
+                            )}
+                          </div>
                           <div>
                             <span className="font-bold text-gray-900 block">{u.name}</span>
                             <span className="text-[11px] text-gray-500 block">{u.email}</span>

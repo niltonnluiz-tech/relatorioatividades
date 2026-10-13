@@ -227,56 +227,62 @@ class SqlDatabaseService {
       this.persistReports();
     }
 
-    // Ensure all registered departments exist in reports and update any legacy coordinator names
+    // Ensure all registered departments exist in reports and have coordinator details & avatars populated
     let reportsUpdated = false;
     const initialDepts = INITIAL_MONTHLY_REPORT.departments as any;
     Object.values(this.memoryReports).forEach((rep) => {
       if (rep.departments) {
-        if (rep.departments.captacao && rep.departments.captacao.coordinatorName?.includes('Priscila')) {
-          rep.departments.captacao.coordinatorName = 'Coordenação de Captação';
-          rep.departments.captacao.coordinatorEmail = 'captacao@campsantoandre.org.br';
-          rep.departments.captacao.modifiedBy = 'Coordenação de Captação';
-          rep.departments.captacao.coordinatorAvatar = '';
-          reportsUpdated = true;
-        }
-        if (rep.departments.ensino && rep.departments.ensino.coordinatorName?.includes('Elaine Serracine')) {
-          rep.departments.ensino.coordinatorName = 'Coordenação Pedagógica';
-          rep.departments.ensino.coordinatorEmail = 'pedagogico@campsantoandre.org.br';
-          rep.departments.ensino.modifiedBy = 'Coordenação Pedagógica';
-          rep.departments.ensino.coordinatorAvatar = '';
-          reportsUpdated = true;
-        }
-        if (rep.departments.coordenador_administrativo) {
-          if (
-            rep.departments.coordenador_administrativo.coordinatorName === 'Coordenação Administrativa' ||
-            !rep.departments.coordenador_administrativo.coordinatorName
-          ) {
-            rep.departments.coordenador_administrativo.coordinatorName = 'Nilton Luiz';
-            rep.departments.coordenador_administrativo.coordinatorEmail = 'niltonnluiz@gmail.com';
-            rep.departments.coordenador_administrativo.coordinatorTitle = 'Coordenador Administrativo';
-            rep.departments.coordenador_administrativo.coordinatorAvatar =
-              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+        // Sync any missing department from initialDepts
+        Object.keys(initialDepts).forEach((k) => {
+          if (!rep.departments[k as keyof MonthlyReport['departments']]) {
+            (rep.departments as any)[k] = initialDepts[k];
             reportsUpdated = true;
           }
-        } else if (initialDepts.coordenador_administrativo) {
-          rep.departments.coordenador_administrativo = initialDepts.coordenador_administrativo;
-          reportsUpdated = true;
-        }
-        if (!rep.departments.estagio && initialDepts.estagio) {
-          rep.departments.estagio = initialDepts.estagio;
-          reportsUpdated = true;
-        }
-        if (!rep.departments.pedagogico && (initialDepts.pedagogico || rep.departments.ensino)) {
-          rep.departments.pedagogico = initialDepts.pedagogico || rep.departments.ensino;
-          reportsUpdated = true;
-        }
-        if (!rep.departments.psicologia && initialDepts.psicologia) {
-          rep.departments.psicologia = initialDepts.psicologia;
-          reportsUpdated = true;
-        }
-        if (!rep.departments.social && initialDepts.social) {
-          rep.departments.social = initialDepts.social;
-          reportsUpdated = true;
+        });
+
+        // Ensure all departments have an official photo/avatar from INITIAL_MONTHLY_REPORT
+        Object.entries(rep.departments).forEach(([deptKey, deptData]) => {
+          if (!deptData) return;
+          const initialDept = initialDepts[deptKey];
+          if ((!deptData.coordinatorAvatar || deptData.coordinatorAvatar.trim() === '') && initialDept?.coordinatorAvatar) {
+            deptData.coordinatorAvatar = initialDept.coordinatorAvatar;
+            reportsUpdated = true;
+          }
+        });
+
+        // Sync coordinator avatar & name with this.users
+        this.users.forEach((u) => {
+          if (!u.departmentId || u.departmentId === 'admin') return;
+          const deptKey = u.departmentId as keyof MonthlyReport['departments'];
+          if (rep.departments[deptKey]) {
+            const d = rep.departments[deptKey];
+            if (!d.coordinatorAvatar || d.coordinatorAvatar.trim() === '') {
+              d.coordinatorAvatar = u.avatarUrl;
+              reportsUpdated = true;
+            }
+            if (!d.coordinatorName || d.coordinatorName.startsWith('Coordenação') || d.coordinatorName.startsWith('Equipe')) {
+              d.coordinatorName = u.name;
+              d.coordinatorEmail = u.email;
+              d.coordinatorTitle = u.position;
+              d.coordinatorAvatar = u.avatarUrl;
+              reportsUpdated = true;
+            }
+          }
+        });
+
+        // Ensure coordenador_administrativo has Nilton Luiz and avatar
+        if (rep.departments.coordenador_administrativo) {
+          const cadm = rep.departments.coordenador_administrativo;
+          if (!cadm.coordinatorName || cadm.coordinatorName === 'Coordenação Administrativa') {
+            cadm.coordinatorName = 'Nilton Luiz';
+            cadm.coordinatorEmail = 'niltonnluiz@gmail.com';
+            cadm.coordinatorTitle = 'Coordenador Administrativo';
+            cadm.coordinatorAvatar = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+            reportsUpdated = true;
+          } else if (!cadm.coordinatorAvatar || cadm.coordinatorAvatar.trim() === '') {
+            cadm.coordinatorAvatar = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+            reportsUpdated = true;
+          }
         }
       }
     });
