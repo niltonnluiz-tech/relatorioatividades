@@ -148,28 +148,24 @@ class SqlDatabaseService {
       this.persistUsers();
     }
 
-    // Purge removed users: Priscila Laurindo and Elaine Serracine
-    const forbiddenNames = ['Priscila Laurindo', 'Elaine Serracine'];
-    const filteredUsers = this.users.filter((u) => {
-      const match = forbiddenNames.some((fn) => u.name && u.name.toLowerCase().includes(fn.toLowerCase()));
-      return !match && u.id !== 'user_captacao' && u.id !== 'user_ensino';
-    });
-    if (filteredUsers.length !== this.users.length) {
-      this.users = filteredUsers;
-      this.persistUsers();
-    }
-
-    // Ensure Nilton Luiz (user_admin) is in Coordenador Administrativo per requirement
-    // and ensure user_coord_admin exists in user pool
+    // Ensure all 15 official institution users exist in local storage
     let usersMigrated = false;
-    const hasCoordAdmin = this.users.some((u) => u.id === 'user_coord_admin');
-    if (!hasCoordAdmin) {
-      const coordAdminUser = INITIAL_USERS.find((u) => u.id === 'user_coord_admin');
-      if (coordAdminUser) {
-        this.users.push({ ...coordAdminUser });
+    INITIAL_USERS.forEach((initUser) => {
+      const existingIdx = this.users.findIndex((u) => u.id === initUser.id || (initUser.id === 'user_psico' && u.id === 'user_psico_social'));
+      if (existingIdx === -1) {
+        this.users.push({ ...initUser });
+        usersMigrated = true;
+      } else if (this.users[existingIdx].id === 'user_psico_social') {
+        // Normalize user_psico_social to user_psico
+        this.users[existingIdx] = {
+          ...this.users[existingIdx],
+          id: 'user_psico',
+          name: this.users[existingIdx].name || initUser.name,
+          email: this.users[existingIdx].email || initUser.email,
+        };
         usersMigrated = true;
       }
-    }
+    });
 
     this.users = this.users.map((u) => {
       let updatedUser = { ...u };

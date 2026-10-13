@@ -1199,6 +1199,10 @@ BEGIN
         department_id = 'coordenador_administrativo',
         department_name = 'Coordenador Administrativo';
 
+    INSERT INTO public.user_secrets (user_id, password_hash)
+    VALUES ('user_coord_admin', v_default_hash)
+    ON CONFLICT (user_id) DO NOTHING;
+
     -- 2. RH (Rosangela Tavares)
     INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
     VALUES ('user_rh', 'Rosangela Tavares', 'rosangela.tavares@campsantoandre.org.br', '(11) 93361-8355', 'coordinator', 'rh', 'Gestão de Pessoas (RH)', 'Coordenadora de Gestão de Pessoas')
@@ -1305,6 +1309,15 @@ BEGIN
 
     INSERT INTO public.user_secrets (user_id, password_hash)
     VALUES ('user_presidencia', v_default_hash)
+    ON CONFLICT (user_id) DO NOTHING;
+
+    -- 14. Coordenação Operacional (Serviços Gerais, Limpeza, Cozinha)
+    INSERT INTO public.users (id, name, email, phone, role, department_id, department_name, position)
+    VALUES ('user_operacoes', 'Coordenação Operacional', 'operacoes@campsantoandre.org.br', '(11) 2842-2470', 'staff', 'limpeza', 'Operações (Limpeza, Manutenção, Cozinha, MKT)', 'Líder Operacional e Serviços')
+    ON CONFLICT (id) DO NOTHING;
+
+    INSERT INTO public.user_secrets (user_id, password_hash)
+    VALUES ('user_operacoes', v_default_hash)
     ON CONFLICT (user_id) DO NOTHING;
 END $$;
 

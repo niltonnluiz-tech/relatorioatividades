@@ -131,6 +131,7 @@ class SupabaseService {
       tableStatus: { [table: string]: 'ok' | 'error' | 'empty' };
       auditLogsFound?: number;
       usersFound?: number;
+      remoteUsers?: any[];
       departmentsFound?: number;
       reportsFound?: number;
       rpcAuditWorking?: boolean;
@@ -232,6 +233,7 @@ class SupabaseService {
             tablesChecked,
             tableStatus,
             usersFound: usersData?.length || 0,
+            remoteUsers: usersData || [],
             departmentsFound: deptsData?.length || 0,
             reportsFound: repsData?.length || 0,
             rpcAuditWorking,
@@ -247,6 +249,7 @@ class SupabaseService {
           tablesChecked,
           tableStatus,
           usersFound: usersData?.length || 0,
+          remoteUsers: usersData || [],
           departmentsFound: deptsData?.length || 0,
           reportsFound: repsData?.length || 0,
           auditLogsFound: logsData?.length || 0,
@@ -606,26 +609,34 @@ class SupabaseService {
           if (!insertErr) {
             recordsPushed.audit_logs++;
           } else {
-            await client.rpc('record_audit_log', {
-              p_user_id: l.userId,
-              p_user_name: l.userName,
-              p_department_id: l.departmentId,
-              p_action: l.action,
-              p_details: l.details,
-            }).catch(() => {});
-            recordsPushed.audit_logs++;
+            try {
+              await client.rpc('record_audit_log', {
+                p_user_id: l.userId,
+                p_user_name: l.userName,
+                p_department_id: l.departmentId,
+                p_action: l.action,
+                p_details: l.details,
+              });
+              recordsPushed.audit_logs++;
+            } catch {
+              // Ignore RPC log error during batch sync
+            }
           }
         }
       }
 
       // Always record the sync milestone in Supabase's immutable audit trail
-      await client.rpc('record_audit_log', {
-        p_user_id: 'user_admin',
-        p_user_name: 'Nilton Luiz',
-        p_department_id: 'coordenador_administrativo',
-        p_action: 'DATABASE_SYNC',
-        p_details: `Sincronização completa realizada para o Supabase: ${recordsPushed.users} usuários, ${recordsPushed.monthly_reports} relatórios e ${recordsPushed.audit_logs} logs persistidos.`,
-      }).catch(() => {});
+      try {
+        await client.rpc('record_audit_log', {
+          p_user_id: 'user_admin',
+          p_user_name: 'Nilton Luiz',
+          p_department_id: 'coordenador_administrativo',
+          p_action: 'DATABASE_SYNC',
+          p_details: `Sincronização completa realizada para o Supabase: ${recordsPushed.users} usuários, ${recordsPushed.monthly_reports} relatórios e ${recordsPushed.audit_logs} logs persistidos.`,
+        });
+      } catch {
+        // Non-blocking milestone record
+      }
 
       return {
         success: true,

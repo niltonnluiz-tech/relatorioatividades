@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { DepartmentId, MetricItem, MonthlyReport, User } from '../types';
 import { sqlDb } from '../services/sqlDb';
+import { INITIAL_MONTHLY_REPORT } from '../data/initialData';
 import { offlineSync } from '../services/offlineSync';
 import { supabaseService } from '../services/supabaseClient';
 import { 

@@ -18,6 +18,62 @@ import {
   Download,
 } from 'lucide-react';
 import { supabaseService, SupabaseConfig } from '../services/supabaseClient';
+import { sqlDb } from '../services/sqlDb';
+
+const MISSING_USERS_SQL = `-- 1. Inserir departamentos que possam estar faltando (evita erro de foreign key users_department_id_fkey)
+INSERT INTO public.departments (id, name, description, order_index) VALUES
+('coordenador_administrativo', 'Coordenador Administrativo', 'Gestão de processos administrativos, compras, suporte e conformidade.', 6),
+('limpeza', 'Limpeza e Zeladoria', 'Zeladoria, higienização de ambientes e conservação das dependências.', 9),
+('pedagogico', 'Pedagógico (Ensino)', 'Formação básica de aprendizes, grade curricular e acompanhamento pedagógico.', 12),
+('psicologia', 'Psicologia', 'Apoio psicossocial, escuta empática e acompanhamento comportamental.', 13),
+('social', 'Social', 'Supervisão social, acolhimento de famílias e relatórios de vulnerabilidade.', 14)
+ON CONFLICT (id) DO UPDATE SET 
+    name = EXCLUDED.name, 
+    description = EXCLUDED.description;
+
+-- 2. Atualizar Nilton Luiz (user_admin) para Coordenador Administrativo
+UPDATE public.users 
+SET department_id = 'coordenador_administrativo',
+    department_name = 'Coordenador Administrativo',
+    position = 'Coordenador Administrativo'
+WHERE id = 'user_admin';
+
+-- 3. Inserir a Coordenação Administrativa institucional (user_coord_admin)
+INSERT INTO public.users (
+    id, name, email, phone, role, department_id, department_name, position
+) VALUES (
+    'user_coord_admin',
+    'Coordenação Administrativa',
+    'administrativo@campsantoandre.org.br',
+    '(11) 2842-2470',
+    'coordinator',
+    'coordenador_administrativo',
+    'Coordenador Administrativo',
+    'Coordenador(a) Administrativo(a)'
+) ON CONFLICT (id) DO UPDATE SET
+    department_id = 'coordenador_administrativo',
+    department_name = 'Coordenador Administrativo';
+
+-- 4. Inserir a Coordenação Operacional (user_operacoes)
+INSERT INTO public.users (
+    id, name, email, phone, role, department_id, department_name, position
+) VALUES (
+    'user_operacoes',
+    'Coordenação Operacional',
+    'operacoes@campsantoandre.org.br',
+    '(11) 2842-2470',
+    'staff',
+    'limpeza',
+    'Operações (Limpeza, Manutenção, Cozinha, MKT)',
+    'Líder Operacional e Serviços'
+) ON CONFLICT (id) DO NOTHING;
+
+-- 5. Inserir senhas e segredos criptografados (senha padrão: camp1234)
+INSERT INTO public.user_secrets (user_id, password_hash)
+VALUES 
+    ('user_coord_admin', extensions.crypt('camp1234', extensions.gen_salt('bf', 12))),
+    ('user_operacoes', extensions.crypt('camp1234', extensions.gen_salt('bf', 12)))
+ON CONFLICT (user_id) DO NOTHING;`;
 
 interface SupabaseConnectionModalProps {
   isOpen: boolean;
@@ -51,6 +107,13 @@ export function SupabaseConnectionModal({
   } | null>(null);
 
   const [copiedKey, setCopiedKey] = useState(false);
+  const [copiedMissingUsersSql, setCopiedMissingUsersSql] = useState(false);
+
+  const handleCopyMissingUsersSql = () => {
+    navigator.clipboard.writeText(MISSING_USERS_SQL);
+    setCopiedMissingUsersSql(true);
+    setTimeout(() => setCopiedMissingUsersSql(false), 4000);
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -339,7 +402,7 @@ export function SupabaseConnectionModal({
                     {testResult.message}
                   </p>
                   {testResult.details && (
-                    <div className="pt-2 space-y-1.5 border-t border-emerald-200/60 mt-2">
+                    <div className="pt-2 space-y-2 border-t border-emerald-200/60 mt-2">
                       <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
                         <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold">
                           ✓ Instituição: OK
@@ -348,7 +411,7 @@ export function SupabaseConnectionModal({
                           ✓ Setores: {testResult.details.departmentsFound ?? 16} ativos
                         </span>
                         <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold">
-                          ✓ Usuários: {testResult.details.usersFound ?? 0} cadastrados
+                          ✓ Usuários no Supabase: {testResult.details.usersFound ?? 0} ({sqlDb.getUsers().length} no sistema)
                         </span>
                         <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold">
                           ✓ Relatórios: OK
@@ -357,6 +420,46 @@ export function SupabaseConnectionModal({
                           ✓ Auditoria & RPC: Ativa
                         </span>
                       </div>
+
+                      {/* Explicativo caso haja divergência entre 15 no sistema e 13 no Supabase */}
+                      {(testResult.details.usersFound ?? 0) < sqlDb.getUsers().length && (
+                        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-[11px] space-y-2 mt-2">
+                          <div className="flex items-start gap-2">
+                            <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-bold text-amber-950">
+                                Divergência de Usuários Explicada ({sqlDb.getUsers().length} no Sistema vs {testResult.details.usersFound} no Supabase Cloud)
+                              </p>
+                              <p className="text-[10px] text-amber-900/90 leading-relaxed mt-0.5">
+                                O sistema possui <strong>{sqlDb.getUsers().length} colaboradores oficiais</strong>. O banco Supabase na nuvem contém atualmente <strong>{testResult.details.usersFound} usuários</strong> pois foi inicializado com a primeira versão do script. Faltam ser sincronizados no Supabase os 2 usuários: <strong>Coordenação Administrativa</strong> (<code>user_coord_admin</code>) e <strong>Coordenação Operacional</strong> (<code>user_operacoes</code>).
+                              </p>
+                            </div>
+                          </div>
+                          <div className="pt-1.5 border-t border-amber-200/70 flex flex-wrap items-center justify-between gap-2">
+                            <span className="text-[10px] font-medium text-amber-800">
+                              Execute o script no SQL Editor do Supabase para ter os 15 usuários sincronizados:
+                            </span>
+                            <button
+                              type="button"
+                              onClick={handleCopyMissingUsersSql}
+                              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                            >
+                              {copiedMissingUsersSql ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-white" />
+                                  <span>SQL Copiado! Cole no SQL Editor do Supabase e clique RUN</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>Copiar SQL dos 2 Usuários Pendentes</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
                       <p className="text-[10px] font-mono text-emerald-800/80">
                         Latência: {testResult.latencyMs || 0}ms | Tabelas verificadas: {testResult.details.tablesChecked.join(', ')}
                       </p>
