@@ -244,3 +244,88 @@ function decodeBinaryDimensions(dataUrl: string): { width: number; height: numbe
   }
   return null;
 }
+
+/**
+ * Prepares a high-quality circular cropped avatar image for jsPDF embedding.
+ * Center-crops the image to 1:1, applies circular clipping, and adds a crisp border.
+ * Returns a PNG data URL ready for doc.addImage(..., 'PNG', x, y, w, h).
+ */
+export async function prepareCircularAvatar(
+  src?: string | null,
+  diameterPx = 240
+): Promise<string | null> {
+  if (!src || typeof src !== 'string' || !src.trim()) {
+    return null;
+  }
+  const cleanSrc = src.trim();
+
+  if (typeof window !== 'undefined' && typeof Image !== 'undefined') {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+
+      // 4-second timeout to prevent PDF export from hanging on slow network requests
+      const timer = setTimeout(() => {
+        resolve(null);
+      }, 4000);
+
+      img.onload = () => {
+        clearTimeout(timer);
+        try {
+          const nw = img.naturalWidth || img.width;
+          const nh = img.naturalHeight || img.height;
+          if (!nw || !nh || nw <= 0 || nh <= 0) {
+            return resolve(null);
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = diameterPx;
+          canvas.height = diameterPx;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(null);
+
+          // Center crop (cover behavior)
+          const minDim = Math.min(nw, nh);
+          const sx = (nw - minDim) / 2;
+          const sy = (nh - minDim) / 2;
+
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+
+          // Circular clip
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(diameterPx / 2, diameterPx / 2, diameterPx / 2 - 2, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.clip();
+
+          // Draw cropped image
+          ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, diameterPx, diameterPx);
+          ctx.restore();
+
+          // Draw clean circular border
+          ctx.beginPath();
+          ctx.arc(diameterPx / 2, diameterPx / 2, diameterPx / 2 - 2, 0, Math.PI * 2);
+          ctx.strokeStyle = '#D1D5DB'; // gray-300
+          ctx.lineWidth = 4;
+          ctx.stroke();
+
+          const dataUrl = canvas.toDataURL('image/png');
+          resolve(dataUrl);
+        } catch {
+          resolve(null);
+        }
+      };
+
+      img.onerror = () => {
+        clearTimeout(timer);
+        resolve(null);
+      };
+
+      img.src = cleanSrc;
+    });
+  }
+
+  return null;
+}
+

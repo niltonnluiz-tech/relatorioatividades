@@ -6,7 +6,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { MonthlyReport, User } from '../types';
 import { sqlDb } from './sqlDb';
-import { prepareImageForPdf, ImageInfo } from './imageUtils';
+import { prepareImageForPdf, prepareCircularAvatar, ImageInfo } from './imageUtils';
 import { canUserViewFinancials } from '../utils/permissions';
 
 export async function generateOfficialReportPdf(report: MonthlyReport, requestingUser?: User): Promise<jsPDF> {
@@ -21,8 +21,20 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
   const pageWidth = 210;
   const pageHeight = 297;
   const settings = sqlDb.getInstitutionSettings();
+  const allUsers = sqlDb.getUsers();
 
-  // Pre-load and normalize all institutional logos in parallel to ensure natural aspect ratios and zero distortion
+  const resolveAvatar = (deptId: string, explicitAvatar?: string, name?: string) => {
+    if (explicitAvatar && explicitAvatar.trim().length > 0) return explicitAvatar;
+    const byDept = allUsers.find((u) => u.departmentId === deptId);
+    if (byDept?.avatarUrl) return byDept.avatarUrl;
+    if (name) {
+      const byName = allUsers.find((u) => u.name && u.name.toLowerCase() === name.toLowerCase());
+      if (byName?.avatarUrl) return byName.avatarUrl;
+    }
+    return '';
+  };
+
+  // Pre-load and normalize all institutional logos and coordinator photos in parallel
   const [
     processedMainLogo,
     processedRotaryLogo,
@@ -30,6 +42,14 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
     processedOngLogo,
     processedTranspLogo,
     processedCoverBannerLogo,
+    rhAvatar,
+    finAvatar,
+    capAvatar,
+    ensAvatar,
+    projAvatar,
+    ggAvatar,
+    presAvatar,
+    caAvatar,
   ] = await Promise.all([
     prepareImageForPdf(settings.logoUrl),
     prepareImageForPdf(settings.rotaryLogoUrl),
@@ -37,6 +57,14 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
     prepareImageForPdf(settings.ongVerificadaLogoUrl),
     prepareImageForPdf(settings.transparenciaLogoUrl),
     prepareImageForPdf(settings.coverBannerLogoUrl || settings.logoUrl),
+    prepareCircularAvatar(resolveAvatar('rh', report.departments.rh?.coordinatorAvatar, report.departments.rh?.coordinatorName)),
+    prepareCircularAvatar(resolveAvatar('financeiro', report.departments.financeiro?.coordinatorAvatar, report.departments.financeiro?.coordinatorName)),
+    prepareCircularAvatar(resolveAvatar('captacao', report.departments.captacao?.coordinatorAvatar, report.departments.captacao?.coordinatorName)),
+    prepareCircularAvatar(resolveAvatar('ensino', report.departments.ensino?.coordinatorAvatar, report.departments.ensino?.coordinatorName)),
+    prepareCircularAvatar(resolveAvatar('projetos', report.departments.projetos?.coordinatorAvatar, report.departments.projetos?.coordinatorName)),
+    prepareCircularAvatar(resolveAvatar('gerencia_geral', report.departments.gerencia_geral?.coordinatorAvatar, report.departments.gerencia_geral?.coordinatorName)),
+    prepareCircularAvatar(resolveAvatar('presidencia', report.departments.presidencia?.coordinatorAvatar, report.departments.presidencia?.coordinatorName)),
+    prepareCircularAvatar(resolveAvatar('coordenador_administrativo', report.departments.coordenador_administrativo?.coordinatorAvatar, report.departments.coordenador_administrativo?.coordinatorName)),
   ]);
 
   /**
@@ -143,25 +171,39 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
     }
   };
 
-  // Helper to draw coordinator info card
+  // Helper to draw coordinator info card with official circular photo
   const drawCoordinatorCard = (
     name: string,
     title: string,
     phone: string,
     email: string,
-    startY: number
+    startY: number,
+    avatarDataUrl?: string | null
   ) => {
-    // Circular portrait placeholder with subtle border
-    doc.setFillColor(243, 244, 246);
-    doc.setDrawColor(209, 213, 219);
-    doc.circle(38, startY + 18, 16, 'FD');
-    
-    // Initial letter badge inside circle
-    doc.setTextColor(55, 65, 81);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(14);
-    const initials = name.split(' ').map((n) => n[0]).slice(0, 2).join('');
-    doc.text(initials, 34, startY + 22);
+    let renderedPhoto = false;
+    if (avatarDataUrl) {
+      try {
+        // Draw the circular photo inside 32x32 mm box centered at x=38, y=startY+18
+        doc.addImage(avatarDataUrl, 'PNG', 22, startY + 2, 32, 32);
+        renderedPhoto = true;
+      } catch {
+        renderedPhoto = false;
+      }
+    }
+
+    if (!renderedPhoto) {
+      // Circular portrait placeholder with subtle border
+      doc.setFillColor(243, 244, 246);
+      doc.setDrawColor(209, 213, 219);
+      doc.circle(38, startY + 18, 16, 'FD');
+      
+      // Initial letter badge inside circle
+      doc.setTextColor(55, 65, 81);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(14);
+      const initials = name.split(' ').map((n) => n[0]).slice(0, 2).join('');
+      doc.text(initials, 34, startY + 22);
+    }
 
     // Info details
     doc.setTextColor(11, 15, 25);
@@ -512,7 +554,7 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
   doc.addPage();
   drawPageHeader('Gestão de Pessoas | RH');
   const rh = report.departments.rh;
-  drawCoordinatorCard(rh.coordinatorName, rh.coordinatorTitle, rh.coordinatorPhone, rh.coordinatorEmail, 40);
+  drawCoordinatorCard(rh.coordinatorName, rh.coordinatorTitle, rh.coordinatorPhone, rh.coordinatorEmail, 40, rhAvatar);
 
   // Table 1: Indicador / Quantidade
   autoTable(doc, {
@@ -554,7 +596,7 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
   doc.addPage();
   drawPageHeader('Financeiro');
   const fin = report.departments.financeiro;
-  drawCoordinatorCard(fin.coordinatorName, fin.coordinatorTitle, fin.coordinatorPhone, fin.coordinatorEmail, 40);
+  drawCoordinatorCard(fin.coordinatorName, fin.coordinatorTitle, fin.coordinatorPhone, fin.coordinatorEmail, 40, finAvatar);
 
   autoTable(doc, {
     startY: 95,
@@ -588,7 +630,7 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
   doc.addPage();
   drawPageHeader('Captação de Recursos');
   const cap = report.departments.captacao;
-  drawCoordinatorCard(cap.coordinatorName, cap.coordinatorTitle, cap.coordinatorPhone, cap.coordinatorEmail, 40);
+  drawCoordinatorCard(cap.coordinatorName, cap.coordinatorTitle, cap.coordinatorPhone, cap.coordinatorEmail, 40, capAvatar);
 
   // Table 1: Captação de Recursos
   autoTable(doc, {
@@ -627,7 +669,7 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
   doc.addPage();
   drawPageHeader('Ensino');
   const ens = report.departments.ensino;
-  drawCoordinatorCard(ens.coordinatorName, ens.coordinatorTitle, ens.coordinatorPhone, ens.coordinatorEmail, 40);
+  drawCoordinatorCard(ens.coordinatorName, ens.coordinatorTitle, ens.coordinatorPhone, ens.coordinatorEmail, 40, ensAvatar);
 
   autoTable(doc, {
     startY: 90,
@@ -704,7 +746,7 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
   doc.addPage();
   drawPageHeader('Gerência de Projetos');
   const proj = report.departments.projetos;
-  drawCoordinatorCard(proj.coordinatorName, proj.coordinatorTitle, proj.coordinatorPhone, proj.coordinatorEmail, 40);
+  drawCoordinatorCard(proj.coordinatorName, proj.coordinatorTitle, proj.coordinatorPhone, proj.coordinatorEmail, 40, projAvatar);
 
   let projY = 90;
   // Section 1
@@ -844,7 +886,7 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
   doc.addPage();
   drawPageHeader('Gerência Geral');
   const gg = report.departments.gerencia_geral;
-  drawCoordinatorCard(gg.coordinatorName, gg.coordinatorTitle, gg.coordinatorPhone, gg.coordinatorEmail, 40);
+  drawCoordinatorCard(gg.coordinatorName, gg.coordinatorTitle, gg.coordinatorPhone, gg.coordinatorEmail, 40, ggAvatar);
 
   let ggY = 95;
   doc.setFont('helvetica', 'normal');
@@ -879,7 +921,7 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
   doc.addPage();
   drawPageHeader('Presidente');
   const pres = report.departments.presidencia;
-  drawCoordinatorCard(pres.coordinatorName, pres.coordinatorTitle, pres.coordinatorPhone, pres.coordinatorEmail, 40);
+  drawCoordinatorCard(pres.coordinatorName, pres.coordinatorTitle, pres.coordinatorPhone, pres.coordinatorEmail, 40, presAvatar);
 
   let presY = 92;
   doc.setTextColor(11, 15, 25);
@@ -925,7 +967,7 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
     const ca = report.departments.coordenador_administrativo;
     doc.addPage();
     drawPageHeader('Coordenador Administrativo');
-    drawCoordinatorCard(ca.coordinatorName, ca.coordinatorTitle, ca.coordinatorPhone, ca.coordinatorEmail, 40);
+    drawCoordinatorCard(ca.coordinatorName, ca.coordinatorTitle, ca.coordinatorPhone, ca.coordinatorEmail, 40, caAvatar);
     let caY = 92;
     if (ca.bulletActivities && ca.bulletActivities.length > 0) {
       doc.setTextColor(11, 15, 25);
