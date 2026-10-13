@@ -233,6 +233,7 @@ class SqlDatabaseService {
 
     // Ensure all registered departments exist in reports and update any legacy coordinator names
     let reportsUpdated = false;
+    const initialDepts = INITIAL_MONTHLY_REPORT.departments as any;
     Object.values(this.memoryReports).forEach((rep) => {
       if (rep.departments) {
         if (rep.departments.captacao && rep.departments.captacao.coordinatorName?.includes('Priscila')) {
