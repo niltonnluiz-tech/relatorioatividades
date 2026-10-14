@@ -25,10 +25,18 @@ export async function generateOfficialReportPdf(report: MonthlyReport, requestin
 
   const resolveAvatar = (deptId: string, explicitAvatar?: string, name?: string) => {
     if (explicitAvatar && explicitAvatar.trim().length > 0) return explicitAvatar;
-    const byDept = allUsers.find((u) => u.departmentId === deptId);
+    let byDept = allUsers.find((u) => u.departmentId === deptId);
+    if (!byDept) {
+      if (deptId === 'pedagogico') byDept = allUsers.find(u => u.departmentId === 'ensino');
+      else if (deptId === 'psicologia' || deptId === 'social') byDept = allUsers.find(u => u.departmentId === 'psicologia_social');
+      else if (deptId === 'operacoes') byDept = allUsers.find(u => u.id === 'user_operacoes' || u.departmentId === 'limpeza');
+      else if (deptId === 'coordenador_administrativo' || deptId === 'admin') byDept = allUsers.find(u => u.id === 'user_admin' || u.id === 'user_coord_admin' || u.departmentId === 'coordenador_administrativo');
+      else if (deptId === 'gerencia_geral') byDept = allUsers.find(u => u.departmentId === 'gerencia_geral' || u.id === 'user_gerencia');
+    }
     if (byDept?.avatarUrl) return byDept.avatarUrl;
     if (name) {
-      const byName = allUsers.find((u) => u.name && u.name.toLowerCase() === name.toLowerCase());
+      const cleanName = name.trim().toLowerCase();
+      const byName = allUsers.find((u) => u.name && (u.name.toLowerCase() === cleanName || u.name.toLowerCase().includes(cleanName) || cleanName.includes(u.name.toLowerCase())));
       if (byName?.avatarUrl) return byName.avatarUrl;
     }
     return '';

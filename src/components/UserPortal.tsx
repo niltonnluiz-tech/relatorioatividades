@@ -364,6 +364,19 @@ export const UserPortal: React.FC<Props> = ({
       }
 
       if (supabaseService.isConfigured() && supabaseService.getConfig().autoSync) {
+        supabaseService.syncDepartmentUpdate(
+          currentReport.id,
+          activeDeptKey,
+          {
+            metrics: newMetrics,
+            subMetrics: newSubMetrics,
+            bulletActivities: newBulletActivities,
+            subBulletSections: newSubBulletSections,
+            customNotes: newNotes,
+            status: newStatus,
+          },
+          currentUser
+        ).catch(() => {});
         supabaseService.pushLocalDataToSupabase().catch((err) => {
           console.warn('Sync em segundo plano para Supabase:', err);
         });

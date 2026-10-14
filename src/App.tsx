@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuditLog, MonthlyReport, SyncStatus, User } from './types';
 import { sqlDb } from './services/sqlDb';
+import { supabaseService } from './services/supabaseClient';
 import { offlineSync } from './services/offlineSync';
 import { INITIAL_USERS, INITIAL_MONTHLY_REPORT } from './data/initialData';
 import { generateMonthlyExcel } from './services/excelGenerator';
@@ -67,11 +68,40 @@ export function App() {
     return unsub;
   }, []);
 
+  // Initial load from Supabase & Realtime synchronization across all devices
+  useEffect(() => {
+    if (supabaseService.isConfigured()) {
+      supabaseService.pullDataFromSupabase().then((res) => {
+        if (res.success) {
+          refreshData();
+        }
+      }).catch((e) => {
+        console.warn('Carga inicial do Supabase:', e);
+      });
+    }
+
+    const unsubRealtime = supabaseService.subscribeToRealtime((table, payload) => {
+      console.log(`[Supabase Realtime] Evento na tabela ${table}:`, payload);
+      supabaseService.pullDataFromSupabase().then(() => {
+        refreshData();
+      }).catch(() => {});
+    });
+
+    return () => {
+      unsubRealtime();
+    };
+  }, []);
+
   const refreshData = () => {
     const rep = sqlDb.getCurrentReport();
     setCurrentReport({ ...rep, departments: { ...rep.departments } });
     setAuditLogs([...sqlDb.getAuditLogs()]);
-    setUsers(sqlDb.getUsers());
+    const latestUsers = sqlDb.getUsers();
+    setUsers(latestUsers);
+    setCurrentUser((prevUser) => {
+      const updated = latestUsers.find(u => u.id === prevUser.id);
+      return updated ? { ...updated } : prevUser;
+    });
   };
 
   const handleUserUpdated = (updatedUser: User) => {

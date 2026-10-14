@@ -197,6 +197,38 @@ class SupabaseService {
 
       tableStatus.monthly_reports = repsError ? 'error' : (repsData && repsData.length > 0 ? 'ok' : 'empty');
 
+      // 4.1 Query department_reports
+      tablesChecked.push('department_reports');
+      const { data: deptRepsData, error: deptRepsError } = await client
+        .from('department_reports')
+        .select('id, department_id')
+        .limit(20);
+      tableStatus.department_reports = deptRepsError ? 'error' : (deptRepsData && deptRepsData.length > 0 ? 'ok' : 'empty');
+
+      // 4.2 Query report_metrics
+      tablesChecked.push('report_metrics');
+      const { data: metricsData, error: metricsError } = await client
+        .from('report_metrics')
+        .select('id')
+        .limit(10);
+      tableStatus.report_metrics = metricsError ? 'error' : (metricsData && metricsData.length > 0 ? 'ok' : 'empty');
+
+      // 4.3 Query monthly_hiring_data
+      tablesChecked.push('monthly_hiring_data');
+      const { data: hiringData, error: hiringError } = await client
+        .from('monthly_hiring_data')
+        .select('id')
+        .limit(1);
+      tableStatus.monthly_hiring_data = hiringError ? 'error' : (hiringData && hiringData.length > 0 ? 'ok' : 'empty');
+
+      // 4.4 Query sector_descriptions
+      tablesChecked.push('sector_descriptions');
+      const { data: sectorData, error: sectorError } = await client
+        .from('sector_descriptions')
+        .select('department_id')
+        .limit(1);
+      tableStatus.sector_descriptions = sectorError ? 'error' : (sectorData && sectorData.length > 0 ? 'ok' : 'empty');
+
       // 5. Query audit_logs
       tablesChecked.push('audit_logs');
       const { data: logsData, error: logsError } = await client
@@ -530,7 +562,7 @@ class SupabaseService {
       // 4. Push current monthly report
       const report = sqlDb.getCurrentReport();
       if (report) {
-        const repPayload = {
+        const repPayload: any = {
           month: report.month,
           year: report.year,
           month_name: report.monthName,
@@ -547,26 +579,39 @@ class SupabaseService {
           updated_at: new Date().toISOString(),
         };
 
-        const { error: repUpdErr } = await client
+        let { error: repUpdErr } = await client
           .from('monthly_reports')
           .update(repPayload)
           .eq('id', report.id);
 
+        if (repUpdErr && (repUpdErr.code === 'PGRST204' || repUpdErr.message?.includes('payload'))) {
+          delete repPayload.payload;
+          const retry = await client.from('monthly_reports').update(repPayload).eq('id', report.id);
+          repUpdErr = retry.error;
+        }
+
         if (!repUpdErr) {
           recordsPushed.monthly_reports = 1;
         } else {
-          const { error: repInsErr } = await client
+          let { error: repInsErr } = await client
             .from('monthly_reports')
             .insert({ id: report.id, ...repPayload });
+          if (repInsErr && (repInsErr.code === 'PGRST204' || repInsErr.message?.includes('payload'))) {
+            delete repPayload.payload;
+            const retryIns = await client.from('monthly_reports').insert({ id: report.id, ...repPayload });
+            repInsErr = retryIns.error;
+          }
           if (!repInsErr) recordsPushed.monthly_reports = 1;
         }
 
-        // Push department_reports
+        // Push department_reports with upsert so each department is saved
         if (report.departments) {
           for (const [deptKey, deptVal] of Object.entries(report.departments)) {
             const d = deptVal as any;
             if (d) {
               const deptRepPayload = {
+                report_id: report.id,
+                department_id: deptKey,
                 coordinator_name: d.coordinatorName || '',
                 coordinator_title: d.coordinatorTitle || '',
                 coordinator_phone: d.coordinatorPhone || '',
@@ -579,10 +624,20 @@ class SupabaseService {
                 custom_notes: d.customNotes || '',
                 updated_at: new Date().toISOString(),
               };
-              await client
+
+              const { error: dErr } = await client
                 .from('department_reports')
-                .update(deptRepPayload)
-                .match({ report_id: report.id, department_id: deptKey });
+                .upsert(deptRepPayload, { onConflict: 'report_id,department_id' });
+
+              if (dErr) {
+                const { error: updErr } = await client
+                  .from('department_reports')
+                  .update(deptRepPayload)
+                  .match({ report_id: report.id, department_id: deptKey });
+                if (updErr) {
+                  await client.from('department_reports').insert(deptRepPayload);
+                }
+              }
             }
           }
         }
@@ -653,7 +708,7 @@ class SupabaseService {
   }
 
   /**
-   * Synchronizes a single user to Supabase
+   * Synchronizes a single user and their profile photo/avatar to Supabase
    */
   public async syncUser(user: User): Promise<boolean> {
     const client = this.getClient();
@@ -667,15 +722,118 @@ class SupabaseService {
         department_id: user.departmentId,
         department_name: user.departmentName || getSectorName(user.departmentId),
         position: user.position,
-        avatar_url: user.avatarUrl || null,
+        avatar_url: user.avatarUrl || '',
         two_factor_enabled: user.twoFactorEnabled || false,
         lgpd_consent_given: user.lgpdConsentGiven ?? true,
         permissions: user.permissions || {},
         updated_at: new Date().toISOString(),
       };
-      const { error } = await client.from('users').update(userPayload).eq('id', user.id);
-      return !error;
+
+      const { error } = await client.from('users').upsert({ id: user.id, ...userPayload }, { onConflict: 'id' });
+      if (error) {
+        await client.from('users').update(userPayload).eq('id', user.id);
+      }
+
+      // Also update coordinator avatar in department_reports for active reports
+      const currentReport = sqlDb.getCurrentReport();
+      if (currentReport && user.departmentId) {
+        await client
+          .from('department_reports')
+          .update({
+            coordinator_avatar: user.avatarUrl || '',
+            coordinator_name: user.name,
+            coordinator_title: user.position,
+            updated_at: new Date().toISOString(),
+          })
+          .match({ report_id: currentReport.id, department_id: user.departmentId });
+
+        if (currentReport.departments && (currentReport.departments as any)[user.departmentId]) {
+          (currentReport.departments as any)[user.departmentId].coordinatorAvatar = user.avatarUrl || '';
+          (currentReport.departments as any)[user.departmentId].coordinatorName = user.name;
+          (currentReport.departments as any)[user.departmentId].coordinatorTitle = user.position;
+          sqlDb.saveReportDirect(currentReport);
+          
+          await client
+            .from('monthly_reports')
+            .update({ payload: currentReport, updated_at: new Date().toISOString() })
+            .eq('id', currentReport.id);
+        }
+      }
+
+      return true;
     } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Synchronizes a single department's activities and metrics in real time
+   */
+  public async syncDepartmentUpdate(
+    reportId: string,
+    departmentId: string,
+    deptData: any,
+    user: User
+  ): Promise<boolean> {
+    const client = this.getClient();
+    if (!client || !this.config.autoSync) return false;
+
+    try {
+      // 1. Ensure monthly_report parent row exists first so foreign key constraints are always satisfied
+      const currentReport = sqlDb.getReport(reportId);
+      if (currentReport) {
+        const repPayload: any = {
+          id: reportId,
+          month: currentReport.month || 7,
+          year: currentReport.year || 2026,
+          month_name: currentReport.monthName || 'Julho',
+          full_title: currentReport.fullTitle || `JULHO DE 2026`,
+          status: currentReport.status || 'aberto',
+          payload: currentReport,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error: repUpsertErr } = await client
+          .from('monthly_reports')
+          .upsert(repPayload, { onConflict: 'id' });
+
+        if (repUpsertErr && (repUpsertErr.code === 'PGRST204' || repUpsertErr.message?.includes('payload'))) {
+          delete repPayload.payload;
+          await client.from('monthly_reports').upsert(repPayload, { onConflict: 'id' });
+        }
+      }
+
+      // 2. Upsert department_reports
+      const deptRepPayload = {
+        report_id: reportId,
+        department_id: departmentId,
+        coordinator_name: deptData.coordinatorName || user.name || '',
+        coordinator_title: deptData.coordinatorTitle || user.position || '',
+        coordinator_phone: deptData.coordinatorPhone || user.phone || '',
+        coordinator_email: deptData.coordinatorEmail || user.email || '',
+        coordinator_avatar: deptData.coordinatorAvatar || user.avatarUrl || '',
+        status: deptData.status || 'rascunho',
+        modified_by: user.name || '',
+        bullet_activities: deptData.bulletActivities || [],
+        sub_bullet_sections: deptData.subBulletSections || [],
+        custom_notes: deptData.customNotes || '',
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error: dErr } = await client
+        .from('department_reports')
+        .upsert(deptRepPayload, { onConflict: 'report_id,department_id' });
+
+      if (dErr) {
+        await client
+          .from('department_reports')
+          .update(deptRepPayload)
+          .match({ report_id: reportId, department_id: departmentId });
+      }
+
+      return true;
+    } catch (e) {
+      console.warn('Erro ao sincronizar departamento com Supabase:', e);
       return false;
     }
   }
@@ -724,7 +882,6 @@ class SupabaseService {
         .select('*');
 
       if (!userErr && usersRemote && usersRemote.length > 0) {
-        // Merge or update local users
         usersRemote.forEach((ru: any) => {
           const existing = sqlDb.getUsers().find((u) => u.id === ru.id);
           if (existing) {
@@ -746,7 +903,7 @@ class SupabaseService {
         });
       }
 
-      // 3. Pull latest monthly report
+      // 3. Pull latest monthly report & department_reports
       const { data: reportRemote, error: repErr } = await client
         .from('monthly_reports')
         .select('*')
@@ -754,9 +911,48 @@ class SupabaseService {
         .limit(1)
         .single();
 
-      if (!repErr && reportRemote && reportRemote.payload) {
-        sqlDb.saveReportDirect(reportRemote.payload as MonthlyReport);
+      const activeRepId = reportRemote?.id || sqlDb.getActiveReportId();
+      const currentLocal = sqlDb.getReport(activeRepId) || sqlDb.getCurrentReport();
+      const baseReport: MonthlyReport = (reportRemote?.payload as MonthlyReport) || { ...currentLocal };
+
+      // Query relational department_reports
+      const { data: deptReps } = await client
+        .from('department_reports')
+        .select('*')
+        .eq('report_id', activeRepId);
+
+      if (deptReps && deptReps.length > 0) {
+        if (!baseReport.departments) {
+          baseReport.departments = { ...(currentLocal.departments || {}) };
+        }
+        deptReps.forEach((dr: any) => {
+          const deptKey = dr.department_id;
+          if (deptKey) {
+            const existingDept = (baseReport.departments as any)[deptKey] || {};
+            (baseReport.departments as any)[deptKey] = {
+              ...existingDept,
+              departmentId: deptKey,
+              coordinatorName: dr.coordinator_name || existingDept.coordinatorName,
+              coordinatorTitle: dr.coordinator_title || existingDept.coordinatorTitle,
+              coordinatorPhone: dr.coordinator_phone || existingDept.coordinatorPhone,
+              coordinatorEmail: dr.coordinator_email || existingDept.coordinatorEmail,
+              coordinatorAvatar: dr.coordinator_avatar || existingDept.coordinatorAvatar,
+              status: dr.status || existingDept.status || 'rascunho',
+              bulletActivities: Array.isArray(dr.bullet_activities) && dr.bullet_activities.length > 0 
+                ? dr.bullet_activities 
+                : (existingDept.bulletActivities || []),
+              subBulletSections: Array.isArray(dr.sub_bullet_sections) && dr.sub_bullet_sections.length > 0
+                ? dr.sub_bullet_sections 
+                : (existingDept.subBulletSections || []),
+              customNotes: dr.custom_notes !== undefined ? dr.custom_notes : existingDept.customNotes,
+              lastModified: dr.updated_at || dr.last_modified || existingDept.lastModified,
+              modifiedBy: dr.modified_by || existingDept.modifiedBy,
+            };
+          }
+        });
       }
+
+      sqlDb.saveReportDirect(baseReport);
 
       return {
         success: true,
@@ -768,6 +964,71 @@ class SupabaseService {
         message: `Falha ao importar dados do Supabase: ${err.message || String(err)}`,
       };
     }
+  }
+
+  private realtimeChannel: any = null;
+
+  /**
+   * Subscribes to live changes in Supabase and triggers a callback whenever
+   * any user on any device changes a report, department item, user avatar, or settings.
+   */
+  public subscribeToRealtime(onDataChanged: (table: string, payload: any) => void): () => void {
+    const client = this.getClient();
+    if (!client) return () => {};
+
+    if (this.realtimeChannel) {
+      try {
+        client.removeChannel(this.realtimeChannel);
+      } catch {}
+      this.realtimeChannel = null;
+    }
+
+    const channel = client
+      .channel('camp-global-realtime-channel')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'monthly_reports' },
+        (payload) => {
+          onDataChanged('monthly_reports', payload);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'department_reports' },
+        (payload) => {
+          onDataChanged('department_reports', payload);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'users' },
+        (payload) => {
+          onDataChanged('users', payload);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'institution_settings' },
+        (payload) => {
+          onDataChanged('institution_settings', payload);
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Supabase Realtime] Canal conectado e escutando sincronização em tempo real.');
+        }
+      });
+
+    this.realtimeChannel = channel;
+
+    return () => {
+      try {
+        client.removeChannel(channel);
+      } catch {}
+      if (this.realtimeChannel === channel) {
+        this.realtimeChannel = null;
+      }
+    };
   }
 
   /**

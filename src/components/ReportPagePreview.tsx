@@ -160,21 +160,19 @@ export const ReportPagePreview: React.FC<Props> = ({
 
     return (
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3.5 sm:gap-5 my-4 sm:my-6 p-3.5 sm:p-4 rounded-xl bg-gray-50 border border-gray-100">
-        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-gray-200 bg-gray-200 flex-shrink-0 shadow-sm flex items-center justify-center text-gray-600 font-bold text-lg sm:text-xl">
+        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-gray-200 bg-gray-200 flex-shrink-0 shadow-sm flex items-center justify-center text-gray-600 font-bold text-lg sm:text-xl relative">
+          <span className="select-none">{name.split(' ').map((n) => n[0]).slice(0, 2).join('')}</span>
           {resolvedAvatar ? (
             <img
               src={resolvedAvatar}
               alt={name}
-              className="w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-cover"
               referrerPolicy="no-referrer"
               onError={(e) => {
                 (e.target as HTMLElement).style.display = 'none';
               }}
             />
           ) : null}
-          {!resolvedAvatar && (
-            <span>{name.split(' ').map((n) => n[0]).slice(0, 2).join('')}</span>
-          )}
         </div>
         <div className="min-w-0 flex-1">
           <h3 className="text-lg sm:text-xl font-bold text-[#0B0F19] leading-snug break-words">{name}</h3>

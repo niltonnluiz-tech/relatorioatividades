@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS public.monthly_reports (
         "budgetRealizado": 240000,
         "inadimplentesTexto": "Taxa de inadimplência mantida controlada em 1.8%."
     }'::jsonb,
+    payload JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
