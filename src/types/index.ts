@@ -203,6 +203,9 @@ export interface AuditLog {
     | 'PASSWORD_RESET_REQUEST'
     | 'PASSWORD_RESET_COMPLETE'
     | '2FA_TOGGLE'
+    | 'DEPARTMENT_CREATE'
+    | 'DEPARTMENT_UPDATE'
+    | 'DEPARTMENT_DELETE'
     | 'SQL_QUERY_EXEC';
   details: string;
   previousValue?: string;

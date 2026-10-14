@@ -150,8 +150,116 @@ export function getSectorName(departmentId?: string): string {
 }
 
 /**
- * Busca a descrição do setor (oficial ou personalizada pelo usuário)
+ * Retorna todos os setores (oficiais + customizados adicionados pelos administradores) com edições aplicadas
  */
+export function getAllSectors(): SectorItem[] {
+  let list = [...OFFICIAL_SECTORS];
+  if (typeof localStorage !== 'undefined') {
+    // Custom sectors added by admin
+    const storedCustom = localStorage.getItem('CAMP_CUSTOM_SECTORS');
+    if (storedCustom) {
+      try {
+        const custom: SectorItem[] = JSON.parse(storedCustom);
+        custom.forEach((cs) => {
+          if (!list.some((s) => s.id === cs.id)) {
+            list.push(cs);
+          }
+        });
+      } catch (e) {}
+    }
+
+    // Edits to sector names/descriptions/positions
+    const storedEdits = localStorage.getItem('CAMP_SECTOR_EDITS');
+    if (storedEdits) {
+      try {
+        const edits: Record<string, { name: string; description: string; defaultPosition: string }> = JSON.parse(storedEdits);
+        list = list.map((s) => {
+          if (edits[s.id]) {
+            return {
+              ...s,
+              name: edits[s.id].name,
+              description: edits[s.id].description,
+              defaultPosition: edits[s.id].defaultPosition || s.defaultPosition,
+            };
+          }
+          return s;
+        });
+      } catch (e) {}
+    }
+  }
+  return list;
+}
+
+export function addCustomSector(data: { name: string; description: string; defaultPosition: string }): SectorItem {
+  const id = `dept_${Date.now()}_${Math.random().toString(36).substring(2, 6)}` as DepartmentId;
+  const newItem: SectorItem = {
+    id,
+    name: data.name.trim(),
+    description: data.description.trim(),
+    defaultPosition: data.defaultPosition.trim() || 'Coordenador(a)',
+  };
+
+  if (typeof localStorage !== 'undefined') {
+    const stored = localStorage.getItem('CAMP_CUSTOM_SECTORS');
+    let custom: SectorItem[] = [];
+    if (stored) {
+      try { custom = JSON.parse(stored); } catch (e) {}
+    }
+    custom.push(newItem);
+    localStorage.setItem('CAMP_CUSTOM_SECTORS', JSON.stringify(custom));
+  }
+  return newItem;
+}
+
+export function updateSectorDetails(id: string, data: { name: string; description: string; defaultPosition: string }): void {
+  if (typeof localStorage !== 'undefined') {
+    // Check if it's in custom sectors
+    const storedCustom = localStorage.getItem('CAMP_CUSTOM_SECTORS');
+    if (storedCustom) {
+      try {
+        let custom: SectorItem[] = JSON.parse(storedCustom);
+        const idx = custom.findIndex((s) => s.id === id);
+        if (idx >= 0) {
+          custom[idx] = {
+            ...custom[idx],
+            name: data.name.trim(),
+            description: data.description.trim(),
+            defaultPosition: data.defaultPosition.trim(),
+          };
+          localStorage.setItem('CAMP_CUSTOM_SECTORS', JSON.stringify(custom));
+          return;
+        }
+      } catch (e) {}
+    }
+
+    // Otherwise store in edits map
+    const storedEdits = localStorage.getItem('CAMP_SECTOR_EDITS');
+    let edits: Record<string, { name: string; description: string; defaultPosition: string }> = {};
+    if (storedEdits) {
+      try { edits = JSON.parse(storedEdits); } catch (e) {}
+    }
+    edits[id] = {
+      name: data.name.trim(),
+      description: data.description.trim(),
+      defaultPosition: data.defaultPosition.trim(),
+    };
+    localStorage.setItem('CAMP_SECTOR_EDITS', JSON.stringify(edits));
+  }
+}
+
+export function deleteCustomSector(id: string): void {
+  if (typeof localStorage !== 'undefined') {
+    const storedCustom = localStorage.getItem('CAMP_CUSTOM_SECTORS');
+    if (storedCustom) {
+      try {
+        let custom: SectorItem[] = JSON.parse(storedCustom);
+        custom = custom.filter((s) => s.id !== id);
+        localStorage.setItem('CAMP_CUSTOM_SECTORS', JSON.stringify(custom));
+      } catch (e) {}
+    }
+  }
+}
+
 export function getSectorDescription(departmentId?: string): string {
   if (!departmentId) return '';
   const canonId = departmentId === 'admin' ? 'ti' : departmentId === 'ensino' ? 'pedagogico' : departmentId;
@@ -162,27 +270,20 @@ export function getSectorDescription(departmentId?: string): string {
         const map = JSON.parse(stored);
         if (map[canonId]) return map[canonId];
         if (map[departmentId]) return map[departmentId];
-      } catch (e) {
-        console.error('Erro ao ler descrições de setores:', e);
-      }
+      } catch (e) {}
     }
   }
-  const sector = OFFICIAL_SECTORS.find((s) => s.id === canonId || s.id === departmentId);
+  const sector = getAllSectors().find((s) => s.id === canonId || s.id === departmentId);
   return sector ? sector.description : '';
 }
 
-/**
- * Salva a nova descrição personalizada de um departamento/setor
- */
 export function saveSectorDescription(departmentId: string, description: string): void {
   const canonId = departmentId === 'admin' ? 'ti' : departmentId === 'ensino' ? 'pedagogico' : departmentId;
   let map: Record<string, string> = {};
   if (typeof localStorage !== 'undefined') {
     const stored = localStorage.getItem('CAMP_SECTOR_DESCRIPTIONS');
     if (stored) {
-      try {
-        map = JSON.parse(stored);
-      } catch (e) {}
+      try { map = JSON.parse(stored); } catch (e) {}
     }
   }
   map[canonId] = description;
@@ -190,9 +291,6 @@ export function saveSectorDescription(departmentId: string, description: string)
   if (typeof localStorage !== 'undefined') {
     localStorage.setItem('CAMP_SECTOR_DESCRIPTIONS', JSON.stringify(map));
   }
-  const sector = OFFICIAL_SECTORS.find((s) => s.id === canonId || s.id === departmentId);
-  if (sector) {
-    sector.description = description;
-  }
 }
+
 

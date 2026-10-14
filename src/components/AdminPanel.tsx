@@ -9,6 +9,7 @@ import { supabaseService } from '../services/supabaseClient';
 import { generateOfficialReportPdf } from '../services/pdfGenerator';
 import { generateMonthlyExcel } from '../services/excelGenerator';
 import { AdminUsersManagement } from './AdminUsersManagement';
+import { AdminDepartmentsManagement } from './AdminDepartmentsManagement';
 import { AdminAlertsManager } from './AdminAlertsManager';
 import { AdminPermissionsPanel } from './AdminPermissionsPanel';
 import { BrandingSettingsModal } from './BrandingSettingsModal';
@@ -34,7 +35,8 @@ import {
   FileDown,
   Bell,
   Image as ImageIcon,
-  Shield
+  Shield,
+  Building
 } from 'lucide-react';
 
 interface Props {
@@ -52,7 +54,7 @@ export const AdminPanel: React.FC<Props> = ({
   onRefreshData,
   onOpenSupabase,
 }) => {
-  const [activeTab, setActiveTab] = useState<'users' | 'permissions' | 'alerts' | 'branding' | 'audit' | 'scheduler' | 'matrix' | 'sql'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'permissions' | 'alerts' | 'branding' | 'audit' | 'scheduler' | 'matrix' | 'sql'>('users');
   const [isBrandingModalOpen, setIsBrandingModalOpen] = useState(false);
   const [schedules, setSchedules] = useState<ExportSchedule[]>(sqlDb.getExportSchedules());
   const [sqlInput, setSqlInput] = useState('SELECT * FROM audit_logs LIMIT 10;');
@@ -229,6 +231,17 @@ export const AdminPanel: React.FC<Props> = ({
         </button>
 
         <button
+          onClick={() => setActiveTab('departments')}
+          className={`px-4 py-2.5 text-xs md:text-sm font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
+            activeTab === 'departments'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-gray-500 hover:text-gray-900'
+          }`}
+        >
+          <Building className="w-4 h-4 text-blue-600" /> Gestão de Departamentos
+        </button>
+
+        <button
           onClick={() => setActiveTab('permissions')}
           className={`px-4 py-2.5 text-xs md:text-sm font-bold border-b-2 transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap ${
             activeTab === 'permissions'
@@ -309,6 +322,11 @@ export const AdminPanel: React.FC<Props> = ({
       {/* Tab: Cadastro de Usuários */}
       {activeTab === 'users' && (
         <AdminUsersManagement currentUser={currentUser} onRefresh={onRefreshData} />
+      )}
+
+      {/* Tab: Gestão de Departamentos */}
+      {activeTab === 'departments' && (
+        <AdminDepartmentsManagement currentUser={currentUser} onRefresh={onRefreshData} />
       )}
 
       {/* Tab: Permissões de Usuários (Setores & Relatório) */}

@@ -17,7 +17,7 @@ import {
 import { INITIAL_MONTHLY_REPORT, INITIAL_USERS } from '../data/initialData';
 import { getDefaultPermissionsForUser } from '../utils/permissions';
 import { calculateAuditHash } from './crypto';
-import { getSectorDescription, saveSectorDescription, getSectorName } from '../constants/sectors';
+import { getSectorDescription, saveSectorDescription, getSectorName, getAllSectors, addCustomSector, updateSectorDetails, deleteCustomSector, SectorItem } from '../constants/sectors';
 
 const DB_STORAGE_KEY = 'CAMP_SQLITE_DB_SNAPSHOT_V1';
 const AUDIT_LOGS_STORAGE_KEY = 'CAMP_AUDIT_LOGS_CHAIN_V1';
@@ -26,6 +26,30 @@ const MONTHLY_REPORTS_STORAGE_KEY = 'CAMP_MONTHLY_REPORTS_V1';
 const USERS_STORAGE_KEY = 'CAMP_USERS_V1';
 const BRANDING_SETTINGS_STORAGE_KEY = 'CAMP_BRANDING_SETTINGS_V1';
 const NOTIFICATIONS_STORAGE_KEY = 'CAMP_NOTIFICATION_CAMPAIGNS_V1';
+
+function safeSetLocalStorage(key: string, value: string) {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    safeSetLocalStorage(key, value);
+  } catch (err: any) {
+    console.warn(`[Storage Warning] Failed to save ${key}:`, err);
+    if (err && (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014)) {
+      try {
+        const logsStored = localStorage.getItem(AUDIT_LOGS_STORAGE_KEY);
+        if (logsStored) {
+          const parsed = JSON.parse(logsStored);
+          if (Array.isArray(parsed) && parsed.length > 30) {
+            safeSetLocalStorage(AUDIT_LOGS_STORAGE_KEY, JSON.stringify(parsed.slice(-30)));
+            safeSetLocalStorage(key, value);
+            return;
+          }
+        }
+      } catch (retryErr) {
+        console.warn('Retry setItem failed:', retryErr);
+      }
+    }
+  }
+}
 
 const DEFAULT_INSTITUTION_SETTINGS: InstitutionSettings = {
   id: 'institution_camp',
@@ -169,8 +193,22 @@ class SqlDatabaseService {
 
     this.users = this.users.map((u) => {
       let updatedUser = { ...u };
-      // User Nilton Luiz (user_admin) or any admin user officially belongs to Coordenador Administrativo
-      if (u.id === 'user_admin' || u.email === 'niltonnluiz@gmail.com' || u.role === 'admin') {
+      // User Nilton Luiz (user_admin) is the official administrator and belongs to Coordenador Administrativo
+      if (u.id === 'user_admin') {
+        updatedUser = {
+          ...updatedUser,
+          id: 'user_admin',
+          name: 'Nilton Luiz',
+          email: 'niltonnluiz@gmail.com',
+          role: 'admin',
+          departmentId: 'coordenador_administrativo',
+          departmentName: 'Coordenador Administrativo',
+          position: 'Coordenador Administrativo',
+          avatarUrl: updatedUser.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          active: true,
+        };
+        usersMigrated = true;
+      } else if (u.email === 'niltonnluiz@gmail.com' || u.role === 'admin') {
         if (updatedUser.departmentId !== 'coordenador_administrativo' || updatedUser.departmentName !== 'Coordenador Administrativo') {
           usersMigrated = true;
           updatedUser = {
@@ -210,6 +248,18 @@ class SqlDatabaseService {
       }
       return updatedUser;
     });
+
+    // Guarantee user_admin is at index 0 and never missing or corrupted
+    const adminIndex = this.users.findIndex((u) => u.id === 'user_admin' || u.email === 'niltonnluiz@gmail.com');
+    if (adminIndex === -1) {
+      this.users.unshift({ ...INITIAL_USERS[0] });
+      usersMigrated = true;
+    } else if (adminIndex > 0) {
+      const [adminObj] = this.users.splice(adminIndex, 1);
+      this.users.unshift(adminObj);
+      usersMigrated = true;
+    }
+
     if (usersMigrated) {
       this.persistUsers();
     }
@@ -327,7 +377,7 @@ class SqlDatabaseService {
       }
     } else {
       this.institutionSettings = { ...DEFAULT_INSTITUTION_SETTINGS };
-      localStorage.setItem(BRANDING_SETTINGS_STORAGE_KEY, JSON.stringify(this.institutionSettings));
+      safeSetLocalStorage(BRANDING_SETTINGS_STORAGE_KEY, JSON.stringify(this.institutionSettings));
     }
 
     // Load notification campaigns
@@ -340,7 +390,7 @@ class SqlDatabaseService {
       }
     } else {
       this.notificationCampaigns = [...DEFAULT_NOTIFICATION_CAMPAIGNS];
-      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(this.notificationCampaigns));
+      safeSetLocalStorage(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(this.notificationCampaigns));
     }
 
     this.initialized = true;
@@ -371,7 +421,7 @@ class SqlDatabaseService {
         status: 'ativo',
       },
     ];
-    localStorage.setItem(EXPORT_SCHEDULES_STORAGE_KEY, JSON.stringify(this.exportSchedules));
+    safeSetLocalStorage(EXPORT_SCHEDULES_STORAGE_KEY, JSON.stringify(this.exportSchedules));
   }
 
   private async initDefaultAuditLogs() {
@@ -424,20 +474,28 @@ class SqlDatabaseService {
       },
     ];
     this.lastHash = initHash;
-    localStorage.setItem(AUDIT_LOGS_STORAGE_KEY, JSON.stringify(this.auditLogs));
+    safeSetLocalStorage(AUDIT_LOGS_STORAGE_KEY, JSON.stringify(this.auditLogs));
   }
 
   public getActiveReportId(): string {
-    if (typeof localStorage === 'undefined') return '2026-07';
-    const saved = localStorage.getItem('CAMP_ACTIVE_REPORT_ID');
-    if (saved) return saved;
-    // Default to July 2026 or current month
-    return '2026-07';
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('CAMP_ACTIVE_REPORT_ID');
+      if (saved) return saved;
+    }
+    // Default to automatic previous month (e.g. September if current is October)
+    const now = new Date();
+    let year = now.getFullYear();
+    let month = now.getMonth(); // getMonth() returns 0-11. For October (9), it returns 9 (September 1-indexed).
+    if (month === 0) {
+      month = 12;
+      year -= 1;
+    }
+    return `${year}-${String(month).padStart(2, '0')}`;
   }
 
   public setActiveReportId(reportId: string) {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('CAMP_ACTIVE_REPORT_ID', reportId);
+      safeSetLocalStorage('CAMP_ACTIVE_REPORT_ID', reportId);
     }
   }
 
@@ -657,11 +715,11 @@ class SqlDatabaseService {
   }
 
   public persistReports() {
-    localStorage.setItem(MONTHLY_REPORTS_STORAGE_KEY, JSON.stringify(this.memoryReports));
+    safeSetLocalStorage(MONTHLY_REPORTS_STORAGE_KEY, JSON.stringify(this.memoryReports));
   }
 
   public persistUsers() {
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(this.users));
+    safeSetLocalStorage(USERS_STORAGE_KEY, JSON.stringify(this.users));
   }
 
   public getUsers(): User[] {
@@ -673,8 +731,14 @@ class SqlDatabaseService {
     const idx = this.users.findIndex((u) => u.id === user.id);
     if (idx >= 0) {
       this.users[idx] = user;
-      this.persistUsers();
+    } else {
+      this.users.push(user);
     }
+    this.persistUsers();
+  }
+
+  public addUser(user: User) {
+    this.updateUser(user);
   }
 
   public async updateUserProfile(userId: string, updates: Partial<User>): Promise<User> {
@@ -772,6 +836,18 @@ class SqlDatabaseService {
       permissions: updates.permissions ? { ...this.users[idx].permissions, ...updates.permissions } : this.users[idx].permissions,
     };
 
+    // Master administrator Nilton Luiz cannot have his identity or admin privileges removed
+    if (userId === 'user_admin' || updatedUser.id === 'user_admin' || updatedUser.email === 'niltonnluiz@gmail.com') {
+      updatedUser.id = 'user_admin';
+      updatedUser.name = 'Nilton Luiz';
+      updatedUser.email = 'niltonnluiz@gmail.com';
+      updatedUser.role = 'admin';
+      updatedUser.departmentId = 'coordenador_administrativo';
+      updatedUser.departmentName = 'Coordenador Administrativo';
+      updatedUser.position = 'Coordenador Administrativo';
+      updatedUser.active = true;
+    }
+
     this.users[idx] = updatedUser;
     this.persistUsers();
 
@@ -833,6 +909,13 @@ class SqlDatabaseService {
       ipAddress: '192.168.1.100 (Console Admin)',
       userAgent: navigator.userAgent,
     });
+
+    // Asynchronously synchronize user to Supabase
+    import('./supabaseClient')
+      .then(({ supabaseService }) => {
+        supabaseService.syncUser(updatedUser).catch(() => {});
+      })
+      .catch(() => {});
 
     return updatedUser;
   }
@@ -900,6 +983,13 @@ class SqlDatabaseService {
     this.users.push(newUser);
     this.persistUsers();
 
+    // Asynchronously synchronize new user to Supabase
+    import('./supabaseClient')
+      .then(({ supabaseService }) => {
+        supabaseService.syncUser(newUser).catch(() => {});
+      })
+      .catch(() => {});
+
     await this.addAuditLog({
       userId: adminUser.id,
       userName: adminUser.name,
@@ -929,6 +1019,13 @@ class SqlDatabaseService {
     user.permissions = { ...permissions };
     this.persistUsers();
 
+    // Asynchronously synchronize permissions to Supabase
+    import('./supabaseClient')
+      .then(({ supabaseService }) => {
+        supabaseService.syncUser(user).catch(() => {});
+      })
+      .catch(() => {});
+
     await this.addAuditLog({
       userId: adminUser.id,
       userName: adminUser.name,
@@ -946,13 +1043,26 @@ class SqlDatabaseService {
 
   public async deleteUser(userId: string, adminUser: User): Promise<void> {
     this.init();
+    if (userId === 'user_admin') {
+      throw new Error('A conta de Administrador Geral (Nilton Luiz) é uma conta mestra protegida do sistema e não pode ser excluída.');
+    }
     const idx = this.users.findIndex((u) => u.id === userId);
     if (idx < 0) {
       throw new Error(`Usuário ${userId} não encontrado.`);
     }
     const removedUser = this.users[idx];
+    if (removedUser.id === 'user_admin' || removedUser.email === 'niltonnluiz@gmail.com') {
+      throw new Error('A conta de Administrador Geral (Nilton Luiz) é uma conta mestra protegida do sistema e não pode ser excluída.');
+    }
     this.users.splice(idx, 1);
     this.persistUsers();
+
+    // Delete user from Supabase if connected
+    import('./supabaseClient')
+      .then(({ supabaseService }) => {
+        supabaseService.deleteUser(userId).catch(() => {});
+      })
+      .catch(() => {});
 
     await this.addAuditLog({
       userId: adminUser.id,
@@ -968,15 +1078,28 @@ class SqlDatabaseService {
 
   public async toggleUserStatus(userId: string, adminUser: User): Promise<User> {
     this.init();
+    if (userId === 'user_admin') {
+      throw new Error('A conta de Administrador Geral (Nilton Luiz) é a conta mestra do sistema e deve permanecer sempre ativa.');
+    }
     const user = this.users.find((u) => u.id === userId);
     if (!user) {
       throw new Error(`Usuário ${userId} não encontrado.`);
+    }
+    if (user.id === 'user_admin' || user.email === 'niltonnluiz@gmail.com') {
+      throw new Error('A conta de Administrador Geral (Nilton Luiz) é a conta mestra do sistema e deve permanecer sempre ativa.');
     }
 
     const prevStatus = user.active !== false ? 'Ativo' : 'Inativo';
     user.active = user.active === false ? true : false;
     const newStatus = user.active ? 'Ativo' : 'Inativo';
     this.persistUsers();
+
+    // Asynchronously synchronize status to Supabase
+    import('./supabaseClient')
+      .then(({ supabaseService }) => {
+        supabaseService.syncUser(user).catch(() => {});
+      })
+      .catch(() => {});
 
     await this.addAuditLog({
       userId: adminUser.id,
@@ -1004,6 +1127,13 @@ class SqlDatabaseService {
     user.twoFactorEnabled = enabled;
     const newVal = enabled ? 'Ativado' : 'Desativado';
     this.persistUsers();
+
+    // Asynchronously synchronize 2FA status to Supabase
+    import('./supabaseClient')
+      .then(({ supabaseService }) => {
+        supabaseService.syncUser(user).catch(() => {});
+      })
+      .catch(() => {});
 
     await this.addAuditLog({
       userId: adminUser.id,
@@ -1037,7 +1167,7 @@ class SqlDatabaseService {
       updatedAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
       updatedBy: adminUser.name,
     };
-    localStorage.setItem(BRANDING_SETTINGS_STORAGE_KEY, JSON.stringify(this.institutionSettings));
+    safeSetLocalStorage(BRANDING_SETTINGS_STORAGE_KEY, JSON.stringify(this.institutionSettings));
 
     const updatedLogos = [
       settings.logoUrl !== undefined ? 'Logo Principal CAMP' : null,
@@ -1081,7 +1211,7 @@ class SqlDatabaseService {
       ...this.institutionSettings,
       ...settings,
     };
-    localStorage.setItem(BRANDING_SETTINGS_STORAGE_KEY, JSON.stringify(this.institutionSettings));
+    safeSetLocalStorage(BRANDING_SETTINGS_STORAGE_KEY, JSON.stringify(this.institutionSettings));
   }
 
   public saveReportDirect(report: MonthlyReport) {
@@ -1189,7 +1319,7 @@ class SqlDatabaseService {
       method,
       expiresAt: Date.now() + 15 * 60 * 1000, // 15 mins
     };
-    localStorage.setItem(`CAMP_PWD_RESET_${user.id}`, JSON.stringify(resetData));
+    safeSetLocalStorage(`CAMP_PWD_RESET_${user.id}`, JSON.stringify(resetData));
 
     await this.addAuditLog({
       userId: user.id,
@@ -1284,7 +1414,7 @@ class SqlDatabaseService {
     };
 
     this.notificationCampaigns.unshift(newCamp);
-    localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(this.notificationCampaigns));
+    safeSetLocalStorage(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(this.notificationCampaigns));
 
     await this.addAuditLog({
       userId: adminUser.id,
@@ -1308,7 +1438,7 @@ class SqlDatabaseService {
       } else if (type === 'click') {
         camp.metrics.clicked = Math.min(camp.metrics.opened, camp.metrics.clicked + 1);
       }
-      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(this.notificationCampaigns));
+      safeSetLocalStorage(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(this.notificationCampaigns));
     }
   }
 
@@ -1369,7 +1499,7 @@ class SqlDatabaseService {
     };
 
     this.auditLogs.push(fullLog);
-    localStorage.setItem(AUDIT_LOGS_STORAGE_KEY, JSON.stringify(this.auditLogs));
+    safeSetLocalStorage(AUDIT_LOGS_STORAGE_KEY, JSON.stringify(this.auditLogs));
 
     // Optional background log dispatch to Supabase if configured
     import('./supabaseClient')
@@ -1394,7 +1524,7 @@ class SqlDatabaseService {
     } else {
       this.exportSchedules.push(schedule);
     }
-    localStorage.setItem(EXPORT_SCHEDULES_STORAGE_KEY, JSON.stringify(this.exportSchedules));
+    safeSetLocalStorage(EXPORT_SCHEDULES_STORAGE_KEY, JSON.stringify(this.exportSchedules));
   }
 
   /**
@@ -1541,6 +1671,68 @@ class SqlDatabaseService {
     });
 
     return sql;
+  }
+
+  public getSectors(): SectorItem[] {
+    return getAllSectors();
+  }
+
+  public async addDepartment(
+    data: { name: string; description: string; defaultPosition: string },
+    adminUser: User
+  ): Promise<SectorItem> {
+    this.init();
+    const newSector = addCustomSector(data);
+    await this.addAuditLog({
+      userId: adminUser.id,
+      userName: adminUser.name,
+      departmentId: 'admin',
+      action: 'DEPARTMENT_CREATE',
+      details: `Novo departamento/setor criado: ${newSector.name} (${newSector.description})`,
+      newValue: `ID: ${newSector.id} | Cargo padrão: ${newSector.defaultPosition}`,
+      ipAddress: '192.168.1.100 (Console Admin)',
+      userAgent: navigator.userAgent,
+    });
+    return newSector;
+  }
+
+  public async updateDepartment(
+    id: string,
+    data: { name: string; description: string; defaultPosition: string },
+    adminUser: User
+  ): Promise<void> {
+    this.init();
+    updateSectorDetails(id, data);
+    await this.addAuditLog({
+      userId: adminUser.id,
+      userName: adminUser.name,
+      departmentId: adminUser.departmentId,
+      action: 'DEPARTMENT_UPDATE',
+      details: `Departamento/setor atualizado: ${data.name} (${data.description})`,
+      newValue: `ID: ${id} | Cargo padrão: ${data.defaultPosition}`,
+      ipAddress: '192.168.1.100 (Console Admin)',
+      userAgent: navigator.userAgent,
+    });
+  }
+
+  public async deleteDepartment(id: string, adminUser: User): Promise<void> {
+    this.init();
+    const sectors = getAllSectors();
+    const sector = sectors.find(s => s.id === id);
+    if (!sector) {
+      throw new Error(`Departamento ${id} não encontrado.`);
+    }
+    deleteCustomSector(id);
+    await this.addAuditLog({
+      userId: adminUser.id,
+      userName: adminUser.name,
+      departmentId: adminUser.departmentId,
+      action: 'DEPARTMENT_DELETE',
+      details: `Departamento/setor excluído: ${sector.name} (${sector.id})`,
+      previousValue: `ID: ${sector.id} | Nome: ${sector.name}`,
+      ipAddress: '192.168.1.100 (Console Admin)',
+      userAgent: navigator.userAgent,
+    });
   }
 }
 

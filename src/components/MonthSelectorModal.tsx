@@ -34,7 +34,15 @@ export const MonthSelectorModal: React.FC<Props> = ({
   const currentDate = new Date();
   const currentSystemMonth = currentDate.getMonth() + 1;
   const currentSystemYear = currentDate.getFullYear();
-  const currentSystemReportId = `${currentSystemYear}-${String(currentSystemMonth).padStart(2, '0')}`;
+
+  // Automatic default: previous month relative to current system date (e.g. September if current is October)
+  let autoMonth = currentSystemMonth - 1;
+  let autoYear = currentSystemYear;
+  if (autoMonth === 0) {
+    autoMonth = 12;
+    autoYear -= 1;
+  }
+  const automaticReportId = `${autoYear}-${String(autoMonth).padStart(2, '0')}`;
 
   const [selectedMonth, setSelectedMonth] = useState<number>(currentReport.month);
   const [selectedYear, setSelectedYear] = useState<number>(currentReport.year);
@@ -50,7 +58,7 @@ export const MonthSelectorModal: React.FC<Props> = ({
   };
 
   const handleSelectCurrentAutomatic = () => {
-    onSelectReportId(currentSystemReportId);
+    onSelectReportId(automaticReportId);
     onClose();
   };
 
@@ -84,26 +92,26 @@ export const MonthSelectorModal: React.FC<Props> = ({
         </div>
 
         <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
-          {/* Quick Action: Usar Mês Atual Automático */}
+          {/* Quick Action: Usar Mês Anterior Automático */}
           <div className="p-4 rounded-xl bg-blue-50/80 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-1.5 text-blue-900 font-bold text-sm">
                 <Sparkles className="w-4 h-4 text-blue-600" />
-                <span>Mês Atual do Sistema (Automático)</span>
+                <span>Mês Padrão Automático (Mês Anterior)</span>
               </div>
               <p className="text-xs text-blue-700 mt-0.5">
-                Definir automaticamente para <strong>{MONTH_NAMES[currentSystemMonth - 1]} / {currentSystemYear}</strong>
+                Definir automaticamente para <strong>{MONTH_NAMES[autoMonth - 1]} / {autoYear}</strong>
               </p>
             </div>
             <button
               onClick={handleSelectCurrentAutomatic}
               className={`px-3 py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs whitespace-nowrap ${
-                currentReport.id === currentSystemReportId
+                currentReport.id === automaticReportId
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white text-blue-700 border border-blue-300 hover:bg-blue-600 hover:text-white'
               }`}
             >
-              {currentReport.id === currentSystemReportId ? (
+              {currentReport.id === automaticReportId ? (
                 <>
                   <Check className="w-3.5 h-3.5" /> Mês Ativo
                 </>

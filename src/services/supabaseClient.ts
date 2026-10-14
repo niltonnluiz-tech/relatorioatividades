@@ -714,24 +714,27 @@ class SupabaseService {
     const client = this.getClient();
     if (!client) return false;
     try {
+      const isMasterAdmin = user.id === 'user_admin' || user.email === 'niltonnluiz@gmail.com';
       const userPayload = {
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        department_id: user.departmentId,
-        department_name: user.departmentName || getSectorName(user.departmentId),
-        position: user.position,
+        name: isMasterAdmin ? 'Nilton Luiz' : user.name,
+        email: isMasterAdmin ? 'niltonnluiz@gmail.com' : user.email,
+        phone: user.phone || (isMasterAdmin ? '(11) 2842-2470' : ''),
+        role: isMasterAdmin ? 'admin' : user.role,
+        department_id: isMasterAdmin ? 'coordenador_administrativo' : user.departmentId,
+        department_name: isMasterAdmin ? 'Coordenador Administrativo' : (user.departmentName || getSectorName(user.departmentId)),
+        position: isMasterAdmin ? 'Coordenador Administrativo' : user.position,
         avatar_url: user.avatarUrl || '',
+        active: isMasterAdmin ? true : (user.active !== false),
         two_factor_enabled: user.twoFactorEnabled || false,
         lgpd_consent_given: user.lgpdConsentGiven ?? true,
         permissions: user.permissions || {},
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await client.from('users').upsert({ id: user.id, ...userPayload }, { onConflict: 'id' });
+      const targetId = isMasterAdmin ? 'user_admin' : user.id;
+      const { error } = await client.from('users').upsert({ id: targetId, ...userPayload }, { onConflict: 'id' });
       if (error) {
-        await client.from('users').update(userPayload).eq('id', user.id);
+        await client.from('users').update(userPayload).eq('id', targetId);
       }
 
       // Also update coordinator avatar in department_reports for active reports
@@ -762,6 +765,22 @@ class SupabaseService {
 
       return true;
     } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Deletes a user from Supabase (prevents deleting master admin user_admin)
+   */
+  public async deleteUser(userId: string): Promise<boolean> {
+    if (userId === 'user_admin') return false;
+    const client = this.getClient();
+    if (!client) return false;
+    try {
+      await client.from('users').delete().eq('id', userId);
+      return true;
+    } catch (e) {
+      console.warn('Erro ao excluir usuário no Supabase:', e);
       return false;
     }
   }
@@ -884,22 +903,84 @@ class SupabaseService {
       if (!userErr && usersRemote && usersRemote.length > 0) {
         usersRemote.forEach((ru: any) => {
           const existing = sqlDb.getUsers().find((u) => u.id === ru.id);
+          const isUserAdmin = ru.id === 'user_admin' 
+            || existing?.id === 'user_admin'
+            || existing?.email === 'niltonnluiz@gmail.com' 
+            || ru.email === 'niltonnluiz@gmail.com';
+
           if (existing) {
-            const isUserAdmin = existing.id === 'user_admin' 
-              || existing.email === 'niltonnluiz@gmail.com' 
-              || existing.role === 'admin' 
-              || existing.departmentId === 'coordenador_administrativo';
             sqlDb.updateUser({
               ...existing,
-              name: ru.name || existing.name,
-              email: ru.email || existing.email,
+              name: isUserAdmin ? 'Nilton Luiz' : (ru.name || existing.name),
+              email: isUserAdmin ? 'niltonnluiz@gmail.com' : (ru.email || existing.email),
               phone: ru.phone || existing.phone,
+              role: isUserAdmin ? 'admin' : (ru.role || existing.role),
               position: isUserAdmin ? 'Coordenador Administrativo' : (ru.position || existing.position),
               departmentId: isUserAdmin ? 'coordenador_administrativo' : (ru.department_id || existing.departmentId),
               departmentName: isUserAdmin ? 'Coordenador Administrativo' : (ru.department_name || existing.departmentName),
               avatarUrl: ru.avatar_url || existing.avatarUrl,
+              active: ru.active !== false,
+            });
+          } else {
+            sqlDb.addUser({
+              id: ru.id,
+              name: isUserAdmin ? 'Nilton Luiz' : ru.name,
+              email: isUserAdmin ? 'niltonnluiz@gmail.com' : ru.email,
+              phone: ru.phone || '',
+              role: isUserAdmin ? 'admin' : (ru.role || 'staff'),
+              departmentId: isUserAdmin ? 'coordenador_administrativo' : (ru.department_id || 'gerencia_geral'),
+              departmentName: isUserAdmin ? 'Coordenador Administrativo' : (ru.department_name || ''),
+              position: isUserAdmin ? 'Coordenador Administrativo' : (ru.position || ''),
+              avatarUrl: ru.avatar_url || '',
+              twoFactorEnabled: ru.two_factor_enabled || false,
+              lgpdConsentGiven: ru.lgpd_consent_given ?? true,
+              active: ru.active !== false,
+              permissions: ru.permissions || {},
             });
           }
+        });
+      }
+
+      // Guarantee root administrator (Nilton Luiz) is ALWAYS intact in sqlDb
+      const currentUsers = sqlDb.getUsers();
+      const adminUser = currentUsers.find((u) => u.id === 'user_admin' || u.email === 'niltonnluiz@gmail.com');
+      if (!adminUser) {
+        sqlDb.addUser({
+          id: 'user_admin',
+          name: 'Nilton Luiz',
+          email: 'niltonnluiz@gmail.com',
+          role: 'admin',
+          departmentId: 'coordenador_administrativo',
+          departmentName: 'Coordenador Administrativo',
+          position: 'Coordenador Administrativo',
+          phone: '(11) 2842-2470',
+          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          active: true,
+          twoFactorEnabled: false,
+          lgpdConsentGiven: true,
+          permissions: {
+            canAccessReport: true,
+            canExportPdf: true,
+            canExportExcel: true,
+            canManageUsers: true,
+            canViewAuditLogs: true,
+            canEditFinancials: true,
+            canViewFinancials: true,
+            canChangeReportStatus: true,
+            canManageSchedules: true,
+          },
+        });
+      } else if (adminUser.name !== 'Nilton Luiz' || adminUser.role !== 'admin' || adminUser.active === false) {
+        sqlDb.updateUser({
+          ...adminUser,
+          id: 'user_admin',
+          name: 'Nilton Luiz',
+          email: 'niltonnluiz@gmail.com',
+          role: 'admin',
+          departmentId: 'coordenador_administrativo',
+          departmentName: 'Coordenador Administrativo',
+          position: 'Coordenador Administrativo',
+          active: true,
         });
       }
 
