@@ -17,7 +17,7 @@ import {
 import { INITIAL_MONTHLY_REPORT, INITIAL_USERS } from '../data/initialData';
 import { getDefaultPermissionsForUser } from '../utils/permissions';
 import { calculateAuditHash } from './crypto';
-import { getSectorDescription, saveSectorDescription, getSectorName, getAllSectors, addCustomSector, updateSectorDetails, deleteCustomSector, SectorItem } from '../constants/sectors';
+import { getSectorDescription, saveSectorDescription, getSectorName, getAllSectors, addCustomSector, updateSectorDetails, deleteCustomSector, ensureCustomSectorExists, SectorItem } from '../constants/sectors';
 
 const DB_STORAGE_KEY = 'CAMP_SQLITE_DB_SNAPSHOT_V1';
 const AUDIT_LOGS_STORAGE_KEY = 'CAMP_AUDIT_LOGS_CHAIN_V1';
@@ -30,7 +30,7 @@ const NOTIFICATIONS_STORAGE_KEY = 'CAMP_NOTIFICATION_CAMPAIGNS_V1';
 function safeSetLocalStorage(key: string, value: string) {
   if (typeof localStorage === 'undefined') return;
   try {
-    safeSetLocalStorage(key, value);
+    localStorage.setItem(key, value);
   } catch (err: any) {
     console.warn(`[Storage Warning] Failed to save ${key}:`, err);
     if (err && (err.name === 'QuotaExceededError' || err.code === 22 || err.code === 1014)) {
@@ -39,8 +39,8 @@ function safeSetLocalStorage(key: string, value: string) {
         if (logsStored) {
           const parsed = JSON.parse(logsStored);
           if (Array.isArray(parsed) && parsed.length > 30) {
-            safeSetLocalStorage(AUDIT_LOGS_STORAGE_KEY, JSON.stringify(parsed.slice(-30)));
-            safeSetLocalStorage(key, value);
+            localStorage.setItem(AUDIT_LOGS_STORAGE_KEY, JSON.stringify(parsed.slice(-30)));
+            localStorage.setItem(key, value);
             return;
           }
         }
@@ -1677,6 +1677,10 @@ class SqlDatabaseService {
     return getAllSectors();
   }
 
+  public ensureSectorExists(sector: SectorItem) {
+    ensureCustomSectorExists(sector);
+  }
+
   public async addDepartment(
     data: { name: string; description: string; defaultPosition: string },
     adminUser: User
@@ -1693,6 +1697,9 @@ class SqlDatabaseService {
       ipAddress: '192.168.1.100 (Console Admin)',
       userAgent: navigator.userAgent,
     });
+    import('./supabaseClient').then(({ supabaseService }) => {
+      supabaseService.syncDepartmentRow(newSector).catch(() => {});
+    }).catch(() => {});
     return newSector;
   }
 
@@ -1713,6 +1720,14 @@ class SqlDatabaseService {
       ipAddress: '192.168.1.100 (Console Admin)',
       userAgent: navigator.userAgent,
     });
+    import('./supabaseClient').then(({ supabaseService }) => {
+      supabaseService.syncDepartmentRow({
+        id: id as any,
+        name: data.name.trim(),
+        description: data.description.trim(),
+        defaultPosition: data.defaultPosition.trim(),
+      }).catch(() => {});
+    }).catch(() => {});
   }
 
   public async deleteDepartment(id: string, adminUser: User): Promise<void> {
@@ -1733,6 +1748,9 @@ class SqlDatabaseService {
       ipAddress: '192.168.1.100 (Console Admin)',
       userAgent: navigator.userAgent,
     });
+    import('./supabaseClient').then(({ supabaseService }) => {
+      supabaseService.deleteDepartmentRow(id).catch(() => {});
+    }).catch(() => {});
   }
 }
 

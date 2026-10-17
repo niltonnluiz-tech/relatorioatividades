@@ -254,11 +254,21 @@ export const UserPortal: React.FC<Props> = ({
         });
       }
 
-      // Background sync to Supabase if configured
+      // Direct real-time sync to Supabase for the active department
       if (supabaseService.isConfigured() && supabaseService.getConfig().autoSync) {
-        supabaseService.pushLocalDataToSupabase().catch((err) => {
-          console.warn('Sync em segundo plano para Supabase:', err);
-        });
+        await supabaseService.syncDepartmentUpdate(
+          currentReport.id,
+          activeDeptKey,
+          {
+            metrics: [...metrics],
+            subMetrics: JSON.parse(JSON.stringify(subMetrics)),
+            bulletActivities: [...bulletActivities],
+            subBulletSections: JSON.parse(JSON.stringify(subBulletSections)),
+            customNotes,
+            status,
+          },
+          currentUser
+        );
       }
 
       onReportUpdated({ ...updated, departments: { ...updated.departments } });
@@ -364,7 +374,7 @@ export const UserPortal: React.FC<Props> = ({
       }
 
       if (supabaseService.isConfigured() && supabaseService.getConfig().autoSync) {
-        supabaseService.syncDepartmentUpdate(
+        await supabaseService.syncDepartmentUpdate(
           currentReport.id,
           activeDeptKey,
           {
@@ -376,10 +386,7 @@ export const UserPortal: React.FC<Props> = ({
             status: newStatus,
           },
           currentUser
-        ).catch(() => {});
-        supabaseService.pushLocalDataToSupabase().catch((err) => {
-          console.warn('Sync em segundo plano para Supabase:', err);
-        });
+        );
       }
 
       onReportUpdated({ ...updated, departments: { ...updated.departments } });
@@ -1118,6 +1125,19 @@ export const UserPortal: React.FC<Props> = ({
                         newArr[idx] = e.target.value;
                       }
                       setBulletActivities(newArr);
+                    }}
+                    onBlur={() => {
+                      if (!isReadOnly) {
+                        persistChangesToDatabase(
+                          metrics,
+                          subMetrics,
+                          bulletActivities,
+                          subBulletSections,
+                          customNotes,
+                          status,
+                          'Atividade atualizada e salva com sucesso!'
+                        );
+                      }
                     }}
                     className={`flex-1 px-2 py-1 rounded sm:rounded-none text-xs md:text-sm font-medium ${
                       isReadOnly

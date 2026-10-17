@@ -80,14 +80,19 @@ export function App() {
       });
     }
 
+    let realtimeDebounceTimer: any = null;
     const unsubRealtime = supabaseService.subscribeToRealtime((table, payload) => {
       console.log(`[Supabase Realtime] Evento na tabela ${table}:`, payload);
-      supabaseService.pullDataFromSupabase().then(() => {
-        refreshData();
-      }).catch(() => {});
+      clearTimeout(realtimeDebounceTimer);
+      realtimeDebounceTimer = setTimeout(() => {
+        supabaseService.pullDataFromSupabase().then(() => {
+          refreshData();
+        }).catch(() => {});
+      }, 300);
     });
 
     return () => {
+      clearTimeout(realtimeDebounceTimer);
       unsubRealtime();
     };
   }, []);
@@ -167,6 +172,14 @@ export function App() {
       userAgent: navigator.userAgent,
     });
     setAuditLogs(sqlDb.getAuditLogs());
+
+    if (supabaseService.isConfigured()) {
+      supabaseService.pullDataFromSupabase(reportId).then((res) => {
+        if (res.success) {
+          refreshData();
+        }
+      }).catch(() => {});
+    }
   };
 
   const handleExportExcel = () => {

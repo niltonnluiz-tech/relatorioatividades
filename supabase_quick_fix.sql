@@ -29,7 +29,8 @@ INSERT INTO public.departments (id, name, description, order_index) VALUES
 ('ti', 'Tecnologia (TI)', 'Infraestrutura de redes, sistemas de informação, suporte técnico e segurança de dados.', 15),
 ('marketing', 'Marketing', 'Comunicação institucional, mídias sociais, eventos e identidade visual.', 16),
 ('ensino', 'Ensino (Pedagógico)', 'Planejamento pedagógico e aulas teóricas de aprendizes', 17),
-('psicologia_social', 'Psicologia & Social', 'Equipe multidisciplinar de atendimento psicossocial', 18)
+('psicologia_social', 'Psicologia & Social', 'Equipe multidisciplinar de atendimento psicossocial', 18),
+('admin', 'Coordenador Administrativo', 'Gestão de processos administrativos e suporte', 19)
 ON CONFLICT (id) DO UPDATE SET 
     name = EXCLUDED.name, 
     description = EXCLUDED.description;
@@ -71,7 +72,8 @@ CREATE TABLE IF NOT EXISTS public.sector_descriptions (
 -- Permite que usuários em qualquer dispositivo leiam e atualizem dados sem bloqueio 401/42501
 ALTER TABLE public.departments ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon read departments" ON public.departments;
-CREATE POLICY "Allow anon read departments" ON public.departments FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Allow anon manage departments" ON public.departments;
+CREATE POLICY "Allow anon manage departments" ON public.departments FOR ALL USING (true) WITH CHECK (true);
 
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow anon manage users" ON public.users;

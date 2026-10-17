@@ -211,6 +211,19 @@ export function addCustomSector(data: { name: string; description: string; defau
   return newItem;
 }
 
+export function ensureCustomSectorExists(sector: SectorItem): void {
+  if (typeof localStorage === 'undefined') return;
+  const stored = localStorage.getItem('CAMP_CUSTOM_SECTORS');
+  let custom: SectorItem[] = [];
+  if (stored) {
+    try { custom = JSON.parse(stored); } catch (e) {}
+  }
+  if (!custom.some(s => s.id === sector.id)) {
+    custom.push(sector);
+    localStorage.setItem('CAMP_CUSTOM_SECTORS', JSON.stringify(custom));
+  }
+}
+
 export function updateSectorDetails(id: string, data: { name: string; description: string; defaultPosition: string }): void {
   if (typeof localStorage !== 'undefined') {
     // Check if it's in custom sectors

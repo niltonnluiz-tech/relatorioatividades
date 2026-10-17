@@ -604,23 +604,42 @@ class SupabaseService {
           if (!repInsErr) recordsPushed.monthly_reports = 1;
         }
 
-        // Push department_reports with upsert so each department is saved
+        // 1. Ensure all sectors exist in public.departments table
+        try {
+          const allSectors = sqlDb.getSectors();
+          for (const sec of allSectors) {
+            try {
+              await client.from('departments').upsert({
+                id: sec.id,
+                name: sec.name,
+                description: sec.description || '',
+                order_index: 0,
+              }, { onConflict: 'id' });
+            } catch {}
+          }
+        } catch {}
+
+        // 2. Push department_reports with upsert for valid registered sectors
         if (report.departments) {
           for (const [deptKey, deptVal] of Object.entries(report.departments)) {
+            // Ignore non-department report payload sections
+            if (deptKey === 'contratados' || deptKey === 'geral') continue;
+            const targetDeptId = deptKey === 'admin' ? 'coordenador_administrativo' : (deptKey === 'ensino' ? 'pedagogico' : deptKey);
+
             const d = deptVal as any;
             if (d) {
               const deptRepPayload = {
                 report_id: report.id,
-                department_id: deptKey,
-                coordinator_name: d.coordinatorName || '',
-                coordinator_title: d.coordinatorTitle || '',
-                coordinator_phone: d.coordinatorPhone || '',
-                coordinator_email: d.coordinatorEmail || '',
+                department_id: targetDeptId,
+                coordinator_name: d.coordinatorName || 'Coordenador',
+                coordinator_title: d.coordinatorTitle || 'Coordenação',
+                coordinator_phone: d.coordinatorPhone || '(11) 2842-2470',
+                coordinator_email: d.coordinatorEmail || 'contato@campsantoandre.org.br',
                 coordinator_avatar: d.coordinatorAvatar || '',
                 status: d.status || 'rascunho',
-                modified_by: d.modifiedBy || '',
-                bullet_activities: d.bulletActivities || [],
-                sub_bullet_sections: d.subBulletSections || [],
+                modified_by: d.modifiedBy || 'Sistema',
+                bullet_activities: Array.isArray(d.bulletActivities) ? d.bulletActivities : [],
+                sub_bullet_sections: Array.isArray(d.subBulletSections) ? d.subBulletSections : [],
                 custom_notes: d.customNotes || '',
                 updated_at: new Date().toISOString(),
               };
@@ -633,9 +652,11 @@ class SupabaseService {
                 const { error: updErr } = await client
                   .from('department_reports')
                   .update(deptRepPayload)
-                  .match({ report_id: report.id, department_id: deptKey });
+                  .match({ report_id: report.id, department_id: targetDeptId });
                 if (updErr) {
-                  await client.from('department_reports').insert(deptRepPayload);
+                  try {
+                    await client.from('department_reports').insert(deptRepPayload);
+                  } catch {}
                 }
               }
             }
@@ -786,6 +807,41 @@ class SupabaseService {
   }
 
   /**
+   * Syncs a sector / department to Supabase departments table
+   */
+  public async syncDepartmentRow(sector: { id: string; name: string; description?: string; defaultPosition?: string }): Promise<boolean> {
+    const client = this.getClient();
+    if (!client) return false;
+    try {
+      await client.from('departments').upsert({
+        id: sector.id,
+        name: sector.name,
+        description: sector.description || '',
+        order_index: 0,
+      }, { onConflict: 'id' });
+      return true;
+    } catch (e) {
+      console.warn('Erro ao sincronizar departamento no Supabase:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Deletes a sector / department from Supabase departments table
+   */
+  public async deleteDepartmentRow(departmentId: string): Promise<boolean> {
+    const client = this.getClient();
+    if (!client) return false;
+    try {
+      await client.from('departments').delete().eq('id', departmentId);
+      return true;
+    } catch (e) {
+      console.warn('Erro ao excluir departamento no Supabase:', e);
+      return false;
+    }
+  }
+
+  /**
    * Synchronizes a single department's activities and metrics in real time
    */
   public async syncDepartmentUpdate(
@@ -798,9 +854,82 @@ class SupabaseService {
     if (!client || !this.config.autoSync) return false;
 
     try {
-      // 1. Ensure monthly_report parent row exists first so foreign key constraints are always satisfied
+      const targetDeptId = departmentId === 'admin' 
+        ? 'coordenador_administrativo' 
+        : (departmentId === 'ensino' ? 'pedagogico' : departmentId);
+
+      // 1. Ensure department exists in public.departments table to prevent foreign key errors
+      try {
+        await client.from('departments').upsert({
+          id: targetDeptId,
+          name: getSectorName(targetDeptId) || targetDeptId,
+          description: sqlDb.getSectorDescription(targetDeptId) || '',
+          order_index: 0,
+        }, { onConflict: 'id' });
+      } catch {}
+
+      // 2. Fetch current local report state to update coordinator and payload
       const currentReport = sqlDb.getReport(reportId);
+      const existingDept = (currentReport?.departments as any)?.[departmentId] || (currentReport?.departments as any)?.[targetDeptId] || {};
+
+      const coordName = deptData.coordinatorName || existingDept.coordinatorName || user.name || 'Coordenador';
+      const coordTitle = deptData.coordinatorTitle || existingDept.coordinatorTitle || user.position || 'Coordenação';
+      const coordPhone = deptData.coordinatorPhone || existingDept.coordinatorPhone || user.phone || '(11) 2842-2470';
+      const coordEmail = deptData.coordinatorEmail || existingDept.coordinatorEmail || user.email || 'contato@campsantoandre.org.br';
+      const coordAvatar = deptData.coordinatorAvatar || existingDept.coordinatorAvatar || user.avatarUrl || '';
+      const bulletActs = Array.isArray(deptData.bulletActivities) ? deptData.bulletActivities : (existingDept.bulletActivities || []);
+
+      // 3. Upsert department_reports row
+      const deptRepPayload = {
+        report_id: reportId,
+        department_id: targetDeptId,
+        coordinator_name: coordName,
+        coordinator_title: coordTitle,
+        coordinator_phone: coordPhone,
+        coordinator_email: coordEmail,
+        coordinator_avatar: coordAvatar,
+        status: deptData.status || existingDept.status || 'rascunho',
+        modified_by: user.name || 'Administrador',
+        bullet_activities: bulletActs,
+        sub_bullet_sections: deptData.subBulletSections || existingDept.subBulletSections || [],
+        custom_notes: deptData.customNotes !== undefined ? deptData.customNotes : (existingDept.customNotes || ''),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error: dErr } = await client
+        .from('department_reports')
+        .upsert(deptRepPayload, { onConflict: 'report_id,department_id' });
+
+      if (dErr) {
+        console.warn('Upsert de department_reports retornou erro, tentando update:', dErr.message);
+        const { error: updErr } = await client
+          .from('department_reports')
+          .update(deptRepPayload)
+          .match({ report_id: reportId, department_id: targetDeptId });
+        if (updErr) {
+          try {
+            await client.from('department_reports').insert(deptRepPayload);
+          } catch {}
+        }
+      }
+
+      // 4. Update monthly_report parent row & payload
       if (currentReport) {
+        if (!currentReport.departments) currentReport.departments = {} as any;
+        (currentReport.departments as any)[departmentId] = {
+          ...existingDept,
+          ...deptData,
+          coordinatorName: coordName,
+          coordinatorTitle: coordTitle,
+          coordinatorPhone: coordPhone,
+          coordinatorEmail: coordEmail,
+          coordinatorAvatar: coordAvatar,
+          bulletActivities: bulletActs,
+          lastModified: new Date().toISOString(),
+          modifiedBy: user.name,
+        };
+        sqlDb.saveReportDirect(currentReport);
+
         const repPayload: any = {
           id: reportId,
           month: currentReport.month || 7,
@@ -822,34 +951,6 @@ class SupabaseService {
         }
       }
 
-      // 2. Upsert department_reports
-      const deptRepPayload = {
-        report_id: reportId,
-        department_id: departmentId,
-        coordinator_name: deptData.coordinatorName || user.name || '',
-        coordinator_title: deptData.coordinatorTitle || user.position || '',
-        coordinator_phone: deptData.coordinatorPhone || user.phone || '',
-        coordinator_email: deptData.coordinatorEmail || user.email || '',
-        coordinator_avatar: deptData.coordinatorAvatar || user.avatarUrl || '',
-        status: deptData.status || 'rascunho',
-        modified_by: user.name || '',
-        bullet_activities: deptData.bulletActivities || [],
-        sub_bullet_sections: deptData.subBulletSections || [],
-        custom_notes: deptData.customNotes || '',
-        updated_at: new Date().toISOString(),
-      };
-
-      const { error: dErr } = await client
-        .from('department_reports')
-        .upsert(deptRepPayload, { onConflict: 'report_id,department_id' });
-
-      if (dErr) {
-        await client
-          .from('department_reports')
-          .update(deptRepPayload)
-          .match({ report_id: reportId, department_id: departmentId });
-      }
-
       return true;
     } catch (e) {
       console.warn('Erro ao sincronizar departamento com Supabase:', e);
@@ -860,7 +961,7 @@ class SupabaseService {
   /**
    * Pulls data from Supabase into local SQL database
    */
-  public async pullDataFromSupabase(): Promise<{
+  public async pullDataFromSupabase(targetReportId?: string): Promise<{
     success: boolean;
     message: string;
     details?: string;
@@ -874,7 +975,26 @@ class SupabaseService {
     }
 
     try {
-      // 1. Pull institution settings
+      // 1. Pull departments from Supabase
+      const { data: remoteDepts } = await client
+        .from('departments')
+        .select('*')
+        .order('order_index', { ascending: true });
+
+      if (remoteDepts && remoteDepts.length > 0) {
+        remoteDepts.forEach((rd: any) => {
+          if (rd.id && rd.name) {
+            sqlDb.ensureSectorExists({
+              id: rd.id,
+              name: rd.name,
+              description: rd.description || '',
+              defaultPosition: 'Coordenador(a)',
+            });
+          }
+        });
+      }
+
+      // 2. Pull institution settings
       const { data: setRemote, error: setErr } = await client
         .from('institution_settings')
         .select('*')
@@ -895,7 +1015,7 @@ class SupabaseService {
         });
       }
 
-      // 2. Pull users
+      // 3. Pull users
       const { data: usersRemote, error: userErr } = await client
         .from('users')
         .select('*');
@@ -984,45 +1104,56 @@ class SupabaseService {
         });
       }
 
-      // 3. Pull latest monthly report & department_reports
-      const { data: reportRemote, error: repErr } = await client
+      // 4. Pull all monthly reports so periods and metadata are synchronized
+      const activeRepId = targetReportId || sqlDb.getActiveReportId();
+
+      const { data: remoteReports } = await client
         .from('monthly_reports')
-        .select('*')
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .single();
+        .select('*');
 
-      const activeRepId = reportRemote?.id || sqlDb.getActiveReportId();
-      const currentLocal = sqlDb.getReport(activeRepId) || sqlDb.getCurrentReport();
-      const baseReport: MonthlyReport = (reportRemote?.payload as MonthlyReport) || { ...currentLocal };
+      if (remoteReports && remoteReports.length > 0) {
+        for (const repRow of remoteReports) {
+          const repId = repRow.id;
+          const currentLocal = sqlDb.getReport(repId);
+          const baseRep: MonthlyReport = (repRow.payload as MonthlyReport) || { ...currentLocal };
+          baseRep.id = repId;
+          baseRep.month = repRow.month || baseRep.month;
+          baseRep.year = repRow.year || baseRep.year;
+          baseRep.monthName = repRow.month_name || baseRep.monthName;
+          baseRep.fullTitle = repRow.full_title || baseRep.fullTitle;
+          baseRep.status = repRow.status || baseRep.status;
+          sqlDb.saveReportDirect(baseRep);
+        }
+      }
 
-      // Query relational department_reports
+      // 5. Query relational department_reports for active report
       const { data: deptReps } = await client
         .from('department_reports')
         .select('*')
         .eq('report_id', activeRepId);
 
+      const activeReport = sqlDb.getReport(activeRepId) || sqlDb.getCurrentReport();
       if (deptReps && deptReps.length > 0) {
-        if (!baseReport.departments) {
-          baseReport.departments = { ...(currentLocal.departments || {}) };
+        if (!activeReport.departments) {
+          activeReport.departments = {};
         }
         deptReps.forEach((dr: any) => {
           const deptKey = dr.department_id;
           if (deptKey) {
-            const existingDept = (baseReport.departments as any)[deptKey] || {};
-            (baseReport.departments as any)[deptKey] = {
+            const existingDept = (activeReport.departments as any)[deptKey] || {};
+            (activeReport.departments as any)[deptKey] = {
               ...existingDept,
               departmentId: deptKey,
-              coordinatorName: dr.coordinator_name || existingDept.coordinatorName,
-              coordinatorTitle: dr.coordinator_title || existingDept.coordinatorTitle,
-              coordinatorPhone: dr.coordinator_phone || existingDept.coordinatorPhone,
-              coordinatorEmail: dr.coordinator_email || existingDept.coordinatorEmail,
-              coordinatorAvatar: dr.coordinator_avatar || existingDept.coordinatorAvatar,
+              coordinatorName: dr.coordinator_name || existingDept.coordinatorName || '',
+              coordinatorTitle: dr.coordinator_title || existingDept.coordinatorTitle || '',
+              coordinatorPhone: dr.coordinator_phone || existingDept.coordinatorPhone || '',
+              coordinatorEmail: dr.coordinator_email || existingDept.coordinatorEmail || '',
+              coordinatorAvatar: dr.coordinator_avatar || existingDept.coordinatorAvatar || '',
               status: dr.status || existingDept.status || 'rascunho',
-              bulletActivities: Array.isArray(dr.bullet_activities) && dr.bullet_activities.length > 0 
+              bulletActivities: Array.isArray(dr.bullet_activities) 
                 ? dr.bullet_activities 
                 : (existingDept.bulletActivities || []),
-              subBulletSections: Array.isArray(dr.sub_bullet_sections) && dr.sub_bullet_sections.length > 0
+              subBulletSections: Array.isArray(dr.sub_bullet_sections) 
                 ? dr.sub_bullet_sections 
                 : (existingDept.subBulletSections || []),
               customNotes: dr.custom_notes !== undefined ? dr.custom_notes : existingDept.customNotes,
@@ -1031,9 +1162,8 @@ class SupabaseService {
             };
           }
         });
+        sqlDb.saveReportDirect(activeReport);
       }
-
-      sqlDb.saveReportDirect(baseReport);
 
       return {
         success: true,
