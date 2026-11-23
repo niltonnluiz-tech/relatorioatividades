@@ -85,20 +85,54 @@ export const UserProfileModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  // Handle local file upload (converts image to DataURL so it persists reliably offline/locally)
+  // Handle local file upload (compresses image to lightweight JPEG DataURL for fast saving)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setFeedback('Por favor escolha uma imagem de até 2MB.');
+      if (file.size > 5 * 1024 * 1024) {
+        setFeedback('Por favor escolha uma imagem de até 5MB.');
         return;
       }
       const reader = new FileReader();
+      reader.onerror = () => setFeedback('Falha ao ler o arquivo de imagem.');
       reader.onload = (event) => {
         const result = event.target?.result as string;
         if (result) {
-          setAvatarUrl(result);
-          setFeedback('Foto carregada com sucesso! Clique em Salvar.');
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_SIZE = 250;
+            let width = img.width;
+            let height = img.height;
+            if (width > height) {
+              if (width > MAX_SIZE) {
+                height *= MAX_SIZE / width;
+                width = MAX_SIZE;
+              }
+            } else {
+              if (height > MAX_SIZE) {
+                width *= MAX_SIZE / height;
+                height = MAX_SIZE;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+              setAvatarUrl(compressedDataUrl);
+              setFeedback('Foto carregada e otimizada com sucesso! Clique em Salvar.');
+            } else {
+              setAvatarUrl(result);
+              setFeedback('Foto carregada com sucesso! Clique em Salvar.');
+            }
+          };
+          img.onerror = () => {
+            setAvatarUrl(result);
+            setFeedback('Foto carregada com sucesso! Clique em Salvar.');
+          };
+          img.src = result;
         }
       };
       reader.readAsDataURL(file);
@@ -127,10 +161,9 @@ export const UserProfileModal: React.FC<Props> = ({
         departmentName,
       });
 
-      // Synchronize directly with Supabase if configured
+      // Synchronize user profile directly and lightweightly with Supabase
       if (supabaseService.isConfigured()) {
         await supabaseService.syncUser(updated).catch(() => {});
-        await supabaseService.pushLocalDataToSupabase().catch(() => {});
       }
 
       onUserUpdated(updated);

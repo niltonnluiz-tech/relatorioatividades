@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { User, UserPermissions, DepartmentId } from '../types';
 import { sqlDb } from '../services/sqlDb';
 import { supabaseService } from '../services/supabaseClient';
@@ -17,7 +17,10 @@ import {
   Image as ImageIcon,
   ArrowUpDown,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Camera,
+  Upload,
+  Trash2
 } from 'lucide-react';
 
 interface Props {
@@ -25,13 +28,24 @@ interface Props {
   currentUser: User;
   onClose: () => void;
   onSaved: (updatedUser: User) => void;
+  onDeleted?: () => void;
 }
+
+const AVATAR_PRESETS = [
+  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?w=150&auto=format&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+];
 
 export const EditUserModal: React.FC<Props> = ({
   user,
   currentUser,
   onClose,
   onSaved,
+  onDeleted,
 }) => {
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
@@ -46,6 +60,7 @@ export const EditUserModal: React.FC<Props> = ({
   const [adminPasswordInput, setAdminPasswordInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // User Permissions
   const [permissions, setPermissions] = useState<UserPermissions>(
@@ -67,6 +82,85 @@ export const EditUserModal: React.FC<Props> = ({
     const sector = OFFICIAL_SECTORS.find((s) => s.id === newDeptId);
     if (sector && (!position || position === 'Coordenador(a)')) {
       setPosition(sector.defaultPosition);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Por favor escolha uma imagem de até 5MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onerror = () => setError('Falha ao ler o arquivo de imagem.');
+      reader.onload = (event) => {
+        const result = event.target?.result as string;
+        if (result) {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_SIZE = 250;
+            let width = img.width;
+            let height = img.height;
+            if (width > height) {
+              if (width > MAX_SIZE) {
+                height *= MAX_SIZE / width;
+                width = MAX_SIZE;
+              }
+            } else {
+              if (height > MAX_SIZE) {
+                width *= MAX_SIZE / height;
+                height = MAX_SIZE;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, width, height);
+              const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+              setAvatarUrl(compressedDataUrl);
+              setError(null);
+            } else {
+              setAvatarUrl(result);
+              setError(null);
+            }
+          };
+          img.onerror = () => {
+            setAvatarUrl(result);
+            setError(null);
+          };
+          img.src = result;
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (user.id === 'user_admin') {
+      alert('O usuário administrador principal (Nilton Luiz) é protegido e não pode ser excluído.');
+      return;
+    }
+    if (user.id === currentUser.id) {
+      alert('Você não pode excluir o seu próprio usuário conectado.');
+      return;
+    }
+    if (confirm(`Tem certeza que deseja excluir permanentemente o usuário ${user.name}? Esta ação não poderá ser desfeita.`)) {
+      setSaving(true);
+      setError(null);
+      try {
+        await sqlDb.deleteUser(user.id, currentUser);
+        if (supabaseService.isConfigured()) {
+          await supabaseService.deleteUser(user.id).catch(() => {});
+        }
+        if (onDeleted) onDeleted();
+        onClose();
+      } catch (err: any) {
+        setError(err?.message || 'Erro ao excluir usuário.');
+        setSaving(false);
+      }
     }
   };
 
@@ -118,6 +212,8 @@ export const EditUserModal: React.FC<Props> = ({
     }
   };
 
+  const isProtectedAdmin = user.id === 'user_admin' || user.email === 'niltonnluiz@gmail.com';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs">
       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden border border-gray-200 animate-in fade-in zoom-in-95 duration-200">
@@ -132,7 +228,7 @@ export const EditUserModal: React.FC<Props> = ({
                 Editar Dados do Usuário
               </h3>
               <p className="text-xs text-gray-400">
-                Atualize informações cadastrais, setor, perfil e permissões de acesso
+                Atualize informações cadastrais, setor, foto de perfil, perfil e permissões
               </p>
             </div>
           </div>
@@ -153,39 +249,76 @@ export const EditUserModal: React.FC<Props> = ({
         )}
 
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5 max-h-[82vh] overflow-y-auto">
-          {/* Avatar preview & info bar */}
-          <div className="flex items-center gap-4 p-3.5 bg-gray-50 border border-gray-200 rounded-xl">
-            <div className="relative">
-              <img
-                src={avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
-                alt={name}
-                className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-xs"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src =
-                    'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
-                }}
-              />
-              <span
-                className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white ${
-                  active ? 'bg-emerald-500' : 'bg-gray-400'
-                }`}
-              />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-sm font-bold text-gray-900 truncate">{name || 'Usuário'}</h4>
-              <p className="text-xs text-gray-500 truncate">{email || 'email@campsantoandre.org.br'}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 uppercase">
-                  {role}
-                </span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${active ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-700'}`}>
-                  {active ? 'Ativo' : 'Inativo'}
-                </span>
-                {twoFactorEnabled && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
-                    2FA Ativo
-                  </span>
-                )}
+          {/* Avatar selection & preview bar */}
+          <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl space-y-3">
+            <label className="text-[11px] font-bold text-gray-700 uppercase block">
+              Foto de Perfil / Avatar do Usuário
+            </label>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="relative shrink-0 flex justify-center">
+                <img
+                  src={avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                  alt={name}
+                  className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src =
+                      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80';
+                  }}
+                />
+                <span
+                  className={`absolute bottom-0 right-0 w-4 h-4 rounded-full border-2 border-white ${
+                    active ? 'bg-emerald-500' : 'bg-gray-400'
+                  }`}
+                />
+              </div>
+
+              <div className="flex-1 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    accept="image/png,image/jpeg,image/jpg,image/gif"
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Carregar do Computador</span>
+                  </button>
+
+                  {avatarUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setAvatarUrl('')}
+                      className="text-xs font-semibold text-red-600 hover:text-red-700 px-2 py-1 cursor-pointer"
+                    >
+                      Remover Foto
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-gray-500">
+                  Ou selecione um avatar institucional pré-definido abaixo:
+                </p>
+
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {AVATAR_PRESETS.map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setAvatarUrl(preset)}
+                      className={`w-8 h-8 rounded-full overflow-hidden border-2 transition-all cursor-pointer ${
+                        avatarUrl === preset ? 'border-blue-600 ring-2 ring-blue-200 scale-105' : 'border-gray-200 opacity-75 hover:opacity-100'
+                      }`}
+                    >
+                      <img src={preset} alt="Preset" className="w-full h-full object-cover" />
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -200,11 +333,10 @@ export const EditUserModal: React.FC<Props> = ({
                 <UserIcon className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-3" />
                 <input
                   type="text"
-                  required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Nome do colaborador"
                   className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                  required
                 />
               </div>
             </div>
@@ -217,15 +349,16 @@ export const EditUserModal: React.FC<Props> = ({
                 <Mail className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-3" />
                 <input
                   type="email"
-                  required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="colaborador@campsantoandre.org.br"
                   className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
+                  required
                 />
               </div>
             </div>
+          </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[11px] font-bold text-gray-700 uppercase block mb-1">
                 Telefone / WhatsApp
@@ -236,7 +369,6 @@ export const EditUserModal: React.FC<Props> = ({
                   type="text"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="(11) 99999-9999"
                   className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
                 />
               </div>
@@ -252,47 +384,44 @@ export const EditUserModal: React.FC<Props> = ({
                   type="text"
                   value={position}
                   onChange={(e) => setPosition(e.target.value)}
-                  placeholder="Ex: Coordenador(a), Gerente, Supervisor(a)"
                   className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
                 />
               </div>
             </div>
           </div>
 
-          {/* Setor com ordenação Crescente / Decrescente */}
-          <div className="p-4 bg-gray-50/70 border border-gray-200 rounded-xl space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-[11px] font-bold text-gray-800 uppercase flex items-center gap-1.5">
-                <Building className="w-3.5 h-3.5 text-blue-600" />
-                Setor / Departamento da Instituição
-              </label>
-              {/* Botão de alternar Ordem Crescente / Decrescente */}
-              <button
-                type="button"
-                onClick={() => setSectorSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
-                title="Alternar ordenação da lista de setores"
-                className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-lg text-[10px] font-bold transition-colors cursor-pointer shadow-2xs"
-              >
-                <ArrowUpDown className="w-3 h-3 text-blue-600" />
-                <span>Ordem: {sectorSortOrder === 'asc' ? 'Crescente (A-Z)' : 'Decrescente (Z-A)'}</span>
-              </button>
+          {/* Setor e Perfil */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-bold text-gray-700 uppercase">
+                  Setor / Departamento
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSectorSortOrder(sectorSortOrder === 'asc' ? 'desc' : 'asc')}
+                  className="text-[10px] text-blue-600 hover:text-blue-800 font-bold inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <ArrowUpDown className="w-3 h-3" />
+                  <span>Ordem: {sectorSortOrder === 'asc' ? 'Crescente (A-Z)' : 'Decrescente (Z-A)'}</span>
+                </button>
+              </div>
+              <div className="relative">
+                <Building className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-3" />
+                <select
+                  value={departmentId}
+                  onChange={(e) => handleDepartmentChange(e.target.value as DepartmentId)}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-xs text-gray-900 font-semibold focus:ring-2 focus:ring-blue-500"
+                >
+                  {sortedSectors.map((sector) => (
+                    <option key={sector.id} value={sector.id}>
+                      {sector.name} — {sector.description.substring(0, 50)}...
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            <select
-              value={departmentId}
-              onChange={(e) => handleDepartmentChange(e.target.value as DepartmentId)}
-              className="w-full bg-white border border-gray-300 rounded-lg p-2.5 text-xs text-gray-900 font-semibold focus:ring-2 focus:ring-blue-500"
-            >
-              {sortedSectors.map((sector) => (
-                <option key={sector.id} value={sector.id}>
-                  {sector.name} — {sector.description}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Perfil & Nível de Acesso */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[11px] font-bold text-gray-700 uppercase block mb-1">
                 Perfil de Acesso
@@ -306,22 +435,6 @@ export const EditUserModal: React.FC<Props> = ({
                 <option value="admin">Administrador Geral</option>
                 <option value="staff">Equipe / Assistente Operacional</option>
               </select>
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-gray-700 uppercase block mb-1">
-                URL da Foto de Perfil
-              </label>
-              <div className="relative">
-                <ImageIcon className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 focus:bg-white"
-                />
-              </div>
             </div>
           </div>
 
@@ -368,36 +481,23 @@ export const EditUserModal: React.FC<Props> = ({
                 />
               </label>
             </div>
+          </div>
 
-            {/* Redefinição de Senha de Acesso pelo Administrador */}
-            <div className="p-3.5 bg-blue-50/50 border border-blue-200 rounded-xl space-y-2">
-              <label className="block text-xs font-bold text-blue-950 flex items-center justify-between">
-                <span>Redefinir Senha de Acesso (Administrador)</span>
-                <span className="text-[10px] text-gray-500 font-normal">Opcional</span>
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={adminPasswordInput}
-                  onChange={(e) => setAdminPasswordInput(e.target.value)}
-                  placeholder="Deixe vazio para manter a senha atual"
-                  className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-xs bg-white text-gray-900 font-mono focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$';
-                    let gen = '';
-                    for (let i = 0; i < 8; i++) gen += chars.charAt(Math.floor(Math.random() * chars.length));
-                    setAdminPasswordInput(gen);
-                  }}
-                  className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-[11px] font-bold rounded-lg transition-colors cursor-pointer"
-                  title="Gerar uma senha segura aleatória"
-                >
-                  Gerar Aleatória
-                </button>
-              </div>
-              <p className="text-[10px] text-blue-800">
+          {/* Redefinição opcional de senha pelo Administrador */}
+          <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-xl space-y-2">
+            <div className="flex items-center gap-2 text-blue-900 font-bold text-xs">
+              <Lock className="w-4 h-4 text-blue-600" />
+              <span>Redefinir Senha de Acesso (Administrador)</span>
+            </div>
+            <div>
+              <input
+                type="password"
+                value={adminPasswordInput}
+                onChange={(e) => setAdminPasswordInput(e.target.value)}
+                placeholder="Digite a nova senha (mínimo 6 caracteres) ou deixe em branco"
+                className="w-full bg-white border border-blue-300 rounded-lg px-3 py-2 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-[10px] text-blue-800 mt-1">
                 Se preenchido, a nova senha entrará em vigor imediatamente para o usuário.
               </p>
             </div>
@@ -476,22 +576,40 @@ export const EditUserModal: React.FC<Props> = ({
           </div>
 
           {/* Footer buttons */}
-          <div className="pt-4 flex items-center justify-end gap-2 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>{saving ? 'Salvando...' : 'Salvar Alterações'}</span>
-            </button>
+          <div className="pt-4 flex items-center justify-between border-t border-gray-200">
+            <div>
+              {!isProtectedAdmin ? (
+                <button
+                  type="button"
+                  onClick={handleDeleteUser}
+                  disabled={saving}
+                  className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer border border-red-200"
+                >
+                  <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                  <span>Excluir Usuário</span>
+                </button>
+              ) : (
+                <span className="text-[11px] text-gray-400 font-medium">Conta Master Protegida</span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>{saving ? 'Salvando...' : 'Salvar Alterações'}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>
