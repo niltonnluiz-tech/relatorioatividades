@@ -30,6 +30,17 @@ export interface DepartmentPermission {
   canAccess: boolean; // Pode acessar e editar/lançar dados no setor
 }
 
+export interface UserActivityTemplate {
+  id: string;
+  userId: string;
+  departmentId?: DepartmentId;
+  type: 'topic' | 'metric';
+  description: string;
+  defaultValue?: string | number;
+  unitType?: 'numeric' | 'currency' | 'percent';
+  createdAt: string;
+}
+
 export interface UserPermissions {
   // Acesso ao Relatório e Downloads
   canAccessReport?: boolean;      // Pode acessar e visualizar o relatório geral de 15 páginas
@@ -46,6 +57,9 @@ export interface UserPermissions {
 
   // Permissões por Departamento (Acessar e Visualizar por setor)
   departments?: Record<string, DepartmentPermission>;
+
+  // Lista pessoal de atividades recorrentes/mensais do usuário
+  activityTemplates?: UserActivityTemplate[];
 }
 
 export interface User {
@@ -206,6 +220,7 @@ export interface AuditLog {
     | 'DEPARTMENT_CREATE'
     | 'DEPARTMENT_UPDATE'
     | 'DEPARTMENT_DELETE'
+    | 'ACTIVITY_TEMPLATE_UPDATE'
     | 'SQL_QUERY_EXEC';
   details: string;
   previousValue?: string;

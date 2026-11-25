@@ -4,9 +4,8 @@
  * choose item types (Topic vs Value/Quantity), and select calendar dates.
  */
 import React, { useState } from 'react';
-import { DepartmentId, MetricItem, MonthlyReport, User } from '../types';
+import { DepartmentId, DepartmentReportData, MetricItem, MonthlyReport, User, UserActivityTemplate } from '../types';
 import { sqlDb } from '../services/sqlDb';
-import { INITIAL_MONTHLY_REPORT } from '../data/initialData';
 import { offlineSync } from '../services/offlineSync';
 import { supabaseService } from '../services/supabaseClient';
 import { 
@@ -18,9 +17,7 @@ import {
   RefreshCw, 
   Calendar, 
   User as UserIcon, 
-  Layers, 
   Hash, 
-  DollarSign, 
   FileText,
   CalendarDays,
   ChevronDown,
@@ -28,20 +25,22 @@ import {
   BarChart3,
   ArrowUpDown,
   Eye,
-  EyeOff,
   Edit3,
   ShieldAlert,
-  AlertTriangle,
   Eraser,
-  Upload
+  Upload,
+  BookmarkPlus,
+  ListChecks,
+  Search,
+  CheckCircle2,
+  X
 } from 'lucide-react';
-import { OFFICIAL_SECTORS, getSortedSectors, getSectorName, getSectorDescription, saveSectorDescription } from '../constants/sectors';
+import { OFFICIAL_SECTORS, getSortedSectors, getSectorName, getSectorDescription } from '../constants/sectors';
 import { ImportItemsModal } from './ImportItemsModal';
 import { 
   canUserAccessDepartment, 
   canUserViewDepartment, 
-  getAllowedDepartmentsForUser,
-  normalizeDepartmentId
+  getAllowedDepartmentsForUser
 } from '../utils/permissions';
 
 interface Props {
@@ -97,8 +96,6 @@ export const UserPortal: React.FC<Props> = ({
   const isReadOnly = !canAccessActiveDept && canViewActiveDept;
   const isAccessDenied = !canAccessActiveDept && !canViewActiveDept;
 
-  const activeDept = currentReport.departments[activeDeptKey] || currentReport.departments.coordenador_administrativo;
-
   // Resolve the registered coordinator user assigned to this active department
   const activeDeptCoordinator = React.useMemo(() => {
     if (currentUser.departmentId === activeDeptKey) {
@@ -114,6 +111,24 @@ export const UserPortal: React.FC<Props> = ({
     }
     return found || null;
   }, [currentUser, activeDeptKey]);
+
+  const activeDept: DepartmentReportData = currentReport.departments[activeDeptKey] || {
+    departmentId: activeDeptKey,
+    coordinatorName: activeDeptCoordinator?.name || currentUser.name,
+    coordinatorTitle: activeDeptCoordinator?.position || getSectorName(activeDeptKey),
+    coordinatorPhone: activeDeptCoordinator?.phone || '(11) 2842-2470',
+    coordinatorEmail: activeDeptCoordinator?.email || '',
+    coordinatorAvatar: activeDeptCoordinator?.avatarUrl || '',
+    status: 'rascunho',
+    lastModified: '',
+    modifiedBy: '',
+    metrics: [],
+    subMetrics: [],
+    bulletActivities: [],
+    activityItems: [],
+    subBulletSections: [],
+    customNotes: '',
+  };
 
   // Determine avatar and name to display for this department
   const coordinatorAvatarToDisplay =
@@ -138,6 +153,13 @@ export const UserPortal: React.FC<Props> = ({
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Popup modal confirmation for registered items
+  const [activitySuccessPopup, setActivitySuccessPopup] = useState<{
+    message: string;
+    detail?: string;
+    subDetail?: string;
+  } | null>(null);
+
   // New item creation state (Topic vs Value/Quantity + Optional Calendar date)
   const defaultReportDate = `${currentReport.year}-${String(currentReport.month).padStart(2, '0')}-15`;
   const [newItemType, setNewItemType] = useState<'topic' | 'metric'>('topic');
@@ -146,7 +168,31 @@ export const UserPortal: React.FC<Props> = ({
   const [newItemDescription, setNewItemDescription] = useState<string>('');
   const [newItemValue, setNewItemValue] = useState<string>('');
   const [newItemUnit, setNewItemUnit] = useState<'numeric' | 'currency' | 'percent'>('numeric');
+  const [saveAsRecurringTemplate, setSaveAsRecurringTemplate] = useState<boolean>(false);
   const [isAddItemOpen, setIsAddItemOpen] = useState<boolean>(true);
+
+  // Per-user recurring activities list ("Minha Lista de Atividades Mensais")
+  const [userTemplates, setUserTemplates] = useState<UserActivityTemplate[]>(() =>
+    sqlDb.getUserActivityTemplates(currentUser.id)
+  );
+  const [isTemplatesModalOpen, setIsTemplatesModalOpen] = useState<boolean>(false);
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
+  const [templateSearch, setTemplateSearch] = useState<string>('');
+  const [templateTypeFilter, setTemplateTypeFilter] = useState<'all' | 'topic' | 'metric'>('all');
+  const [useTemplateInsertDate, setUseTemplateInsertDate] = useState<boolean>(false);
+  const [templateInsertDate, setTemplateInsertDate] = useState<string>(defaultReportDate);
+
+  // New template form inside the modal
+  const [newTplType, setNewTplType] = useState<'topic' | 'metric'>('topic');
+  const [newTplDesc, setNewTplDesc] = useState<string>('');
+  const [newTplValue, setNewTplValue] = useState<string>('');
+  const [newTplUnit, setNewTplUnit] = useState<'numeric' | 'currency' | 'percent'>('numeric');
+
+  // Inline template edit state
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingTemplateDesc, setEditingTemplateDesc] = useState<string>('');
+  const [editingTemplateVal, setEditingTemplateVal] = useState<string>('');
+
   // Department description editing state
   const [sectorDescription, setSectorDescription] = useState<string>(() => getSectorDescription(activeDeptKey));
   const [isEditDescModalOpen, setIsEditDescModalOpen] = useState(false);
@@ -157,10 +203,30 @@ export const UserPortal: React.FC<Props> = ({
   const [clearOption, setClearOption] = useState<'topics' | 'metrics' | 'all'>('topics');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-  // Sync state whenever activeDeptKey changes
+  // Sync user's personal activity templates when logged-in user or synced permissions change
+  React.useEffect(() => {
+    setUserTemplates(sqlDb.getUserActivityTemplates(currentUser.id));
+    setSelectedTemplateIds([]);
+  }, [currentUser.id, currentUser.permissions?.activityTemplates]);
+
+  // Allow Escape key to dismiss success popup
+  React.useEffect(() => {
+    if (!activitySuccessPopup) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setActivitySuccessPopup(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activitySuccessPopup]);
+
+  // Sync state whenever activeDeptKey or currentReport changes (never fallback to July 2026)
   React.useEffect(() => {
     setSectorDescription(getSectorDescription(activeDeptKey));
-    const dept = currentReport.departments[activeDeptKey] || (INITIAL_MONTHLY_REPORT.departments as any)[activeDeptKey];
+    const reportDefaultDate = `${currentReport.year}-${String(currentReport.month).padStart(2, '0')}-15`;
+    setNewItemDate(reportDefaultDate);
+    setTemplateInsertDate(reportDefaultDate);
+
+    const dept = currentReport.departments[activeDeptKey];
     if (dept) {
       setMetrics(dept.metrics ? [...dept.metrics] : []);
       setSubMetrics(dept.subMetrics ? JSON.parse(JSON.stringify(dept.subMetrics)) : []);
@@ -219,7 +285,7 @@ export const UserPortal: React.FC<Props> = ({
       setSaveFeedback('Itens limpos e persistidos com sucesso no banco de dados!');
       setTimeout(() => setSaveFeedback(null), 4000);
     } catch (err: any) {
-      alert(`Erro ao limpar itens: ${err.message}`);
+      setSaveFeedback(`Erro ao limpar itens: ${err.message}`);
     } finally {
       setSaving(false);
     }
@@ -438,6 +504,21 @@ export const UserPortal: React.FC<Props> = ({
     await persistChangesToDatabase(nextMetrics, subMetrics, bulletActivities, subBulletSections, customNotes, status, 'Indicador removido e salvo com sucesso no relatório!');
   };
 
+  const formatMetricValueByUnit = (
+    rawValStr: string,
+    unit: 'numeric' | 'currency' | 'percent'
+  ): number | string => {
+    const trimmed = String(rawValStr || '').trim();
+    if (unit === 'currency') {
+      return trimmed.startsWith('R$') ? trimmed : `R$ ${trimmed || '0,00'}`;
+    }
+    if (unit === 'percent') {
+      return trimmed.endsWith('%') ? trimmed : `${trimmed || '0'}%`;
+    }
+    const num = Number(trimmed.replace(/\./g, '').replace(',', '.'));
+    return !isNaN(num) && trimmed !== '' ? num : trimmed || 0;
+  };
+
   // Handler for adding new items (either Topic/Activity or Value/Quantity)
   const handleAddNewItem = async () => {
     if (!newItemDescription.trim()) {
@@ -445,9 +526,11 @@ export const UserPortal: React.FC<Props> = ({
       return;
     }
 
+    const cleanDescription = newItemDescription.trim();
     let nextActivities = [...bulletActivities];
     let nextMetrics = [...metrics];
     let msg = '';
+    let popupDetail = '';
 
     if (newItemType === 'topic') {
       let formattedDate = '';
@@ -455,32 +538,34 @@ export const UserPortal: React.FC<Props> = ({
         const [yyyy, mm, dd] = newItemDate.split('-');
         formattedDate = `[${dd}/${mm}/${yyyy}] `;
       }
-      const textToAppend = `${formattedDate}${newItemDescription.trim()};`;
+      const textToAppend = `${formattedDate}${cleanDescription};`;
       nextActivities.push(textToAppend);
       setBulletActivities(nextActivities);
       setNewItemDescription('');
+      popupDetail = textToAppend;
       msg = useItemDate
         ? 'Novo tópico adicionado com data e salvo com sucesso no relatório!'
         : 'Novo tópico adicionado e salvo com sucesso no relatório!';
+
+      if (saveAsRecurringTemplate) {
+        await sqlDb.addUserActivityTemplate(
+          currentUser.id,
+          {
+            departmentId: activeDeptKey,
+            type: 'topic',
+            description: cleanDescription,
+          },
+          currentUser
+        );
+        setUserTemplates(sqlDb.getUserActivityTemplates(currentUser.id));
+      }
     } else {
       const rawValStr = String(newItemValue).trim();
-      let finalVal: number | string = rawValStr;
-      if (newItemUnit === 'currency') {
-        if (!rawValStr.startsWith('R$')) {
-          finalVal = `R$ ${rawValStr || '0,00'}`;
-        }
-      } else if (newItemUnit === 'percent') {
-        if (!rawValStr.endsWith('%')) {
-          finalVal = `${rawValStr || '0'}%`;
-        }
-      } else {
-        const num = Number(rawValStr.replace(/\./g, '').replace(',', '.'));
-        finalVal = !isNaN(num) && rawValStr !== '' ? num : rawValStr || 0;
-      }
+      const finalVal = formatMetricValueByUnit(rawValStr, newItemUnit);
 
       const newMetricItem: MetricItem = {
         id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-        label: newItemDescription.trim(),
+        label: cleanDescription,
         value: finalVal,
         date: useItemDate ? newItemDate : undefined,
         unitType: newItemUnit,
@@ -490,9 +575,25 @@ export const UserPortal: React.FC<Props> = ({
       setMetrics(nextMetrics);
       setNewItemDescription('');
       setNewItemValue('');
+      popupDetail = `${newMetricItem.label}: ${newMetricItem.value}`;
       msg = useItemDate
         ? 'Novo indicador adicionado com data e salvo com sucesso no relatório!'
         : 'Novo indicador adicionado e salvo com sucesso no relatório!';
+
+      if (saveAsRecurringTemplate) {
+        await sqlDb.addUserActivityTemplate(
+          currentUser.id,
+          {
+            departmentId: activeDeptKey,
+            type: 'metric',
+            description: cleanDescription,
+            defaultValue: rawValStr || '0',
+            unitType: newItemUnit,
+          },
+          currentUser
+        );
+        setUserTemplates(sqlDb.getUserActivityTemplates(currentUser.id));
+      }
     }
 
     await persistChangesToDatabase(
@@ -504,6 +605,161 @@ export const UserPortal: React.FC<Props> = ({
       status,
       msg
     );
+
+    setActivitySuccessPopup({
+      message: 'Atividade cadastrada com sucesso!',
+      detail: popupDetail,
+      subDetail: saveAsRecurringTemplate
+        ? `Salva no relatório (${currentReport.monthName}/${currentReport.year}) e na sua lista de atividades mensais.`
+        : `Setor: ${getSectorName(activeDeptKey)} • ${currentReport.monthName}/${currentReport.year}`,
+    });
+  };
+
+  // Recurring Activities List Handlers
+  const handleCreateTemplate = async () => {
+    const cleanDesc = newTplDesc.trim();
+    if (!cleanDesc) {
+      setSaveFeedback('Informe a descrição da atividade para cadastrar na sua lista mensal.');
+      return;
+    }
+
+    await sqlDb.addUserActivityTemplate(
+      currentUser.id,
+      {
+        departmentId: activeDeptKey,
+        type: newTplType,
+        description: cleanDesc,
+        defaultValue: newTplType === 'metric' ? newTplValue.trim() || '0' : undefined,
+        unitType: newTplType === 'metric' ? newTplUnit : undefined,
+      },
+      currentUser
+    );
+
+    setUserTemplates(sqlDb.getUserActivityTemplates(currentUser.id));
+    setNewTplDesc('');
+    setNewTplValue('');
+
+    setActivitySuccessPopup({
+      message: 'Atividade cadastrada com sucesso!',
+      detail: cleanDesc,
+      subDetail: 'Adicionada à sua Lista de Atividades Mensais para seleção nos próximos meses.',
+    });
+  };
+
+  const handleSaveTemplateEdit = async (templateId: string) => {
+    if (!editingTemplateDesc.trim()) return;
+    await sqlDb.updateUserActivityTemplate(currentUser.id, templateId, {
+      description: editingTemplateDesc.trim(),
+      defaultValue: editingTemplateVal.trim() || undefined,
+    });
+    setUserTemplates(sqlDb.getUserActivityTemplates(currentUser.id));
+    setEditingTemplateId(null);
+    setEditingTemplateDesc('');
+    setEditingTemplateVal('');
+  };
+
+  const handleDeleteTemplate = async (templateId: string) => {
+    await sqlDb.deleteUserActivityTemplate(currentUser.id, templateId);
+    setSelectedTemplateIds((prev) => prev.filter((id) => id !== templateId));
+    setUserTemplates(sqlDb.getUserActivityTemplates(currentUser.id));
+  };
+
+  const handleSaveExistingTopicAsTemplate = async (rawActivity: string) => {
+    const { text } = extractDateAndText(rawActivity);
+    const cleanDesc = text.replace(/;+\s*$/, '').trim();
+    if (!cleanDesc) return;
+    await sqlDb.addUserActivityTemplate(
+      currentUser.id,
+      {
+        departmentId: activeDeptKey,
+        type: 'topic',
+        description: cleanDesc,
+      },
+      currentUser
+    );
+    setUserTemplates(sqlDb.getUserActivityTemplates(currentUser.id));
+    setActivitySuccessPopup({
+      message: 'Atividade cadastrada com sucesso!',
+      detail: cleanDesc,
+      subDetail: 'Salva na sua Lista de Atividades Mensais para reutilizar nos próximos meses.',
+    });
+  };
+
+  const handleSaveExistingMetricAsTemplate = async (m: MetricItem) => {
+    const cleanDesc = m.label.trim();
+    if (!cleanDesc) return;
+    await sqlDb.addUserActivityTemplate(
+      currentUser.id,
+      {
+        departmentId: activeDeptKey,
+        type: 'metric',
+        description: cleanDesc,
+        defaultValue: String(m.value ?? '0'),
+        unitType: m.unitType && m.unitType !== 'text' ? m.unitType : 'numeric',
+      },
+      currentUser
+    );
+    setUserTemplates(sqlDb.getUserActivityTemplates(currentUser.id));
+    setActivitySuccessPopup({
+      message: 'Atividade cadastrada com sucesso!',
+      detail: `${cleanDesc} (${m.value})`,
+      subDetail: 'Indicador salvo na sua Lista de Atividades Mensais.',
+    });
+  };
+
+  const handleInsertTemplatesToMonth = async (templatesToInsert: UserActivityTemplate[]) => {
+    if (templatesToInsert.length === 0 || isReadOnly) return;
+
+    const nextActivities = [...bulletActivities];
+    const nextMetrics = [...metrics];
+
+    let formattedDatePrefix = '';
+    if (useTemplateInsertDate && templateInsertDate) {
+      const [yyyy, mm, dd] = templateInsertDate.split('-');
+      formattedDatePrefix = `[${dd}/${mm}/${yyyy}] `;
+    }
+
+    templatesToInsert.forEach((tpl) => {
+      if (tpl.type === 'topic') {
+        const cleanDesc = tpl.description.trim();
+        const baseText = cleanDesc.endsWith(';') ? cleanDesc : `${cleanDesc};`;
+        nextActivities.push(`${formattedDatePrefix}${baseText}`);
+      } else {
+        const unit = tpl.unitType || 'numeric';
+        const val = formatMetricValueByUnit(String(tpl.defaultValue ?? '0'), unit);
+        nextMetrics.push({
+          id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          label: tpl.description.trim(),
+          value: val,
+          date: useTemplateInsertDate ? templateInsertDate : undefined,
+          unitType: unit,
+        });
+      }
+    });
+
+    setBulletActivities(nextActivities);
+    setMetrics(nextMetrics);
+    setSelectedTemplateIds([]);
+    setIsTemplatesModalOpen(false);
+
+    await persistChangesToDatabase(
+      nextMetrics,
+      subMetrics,
+      nextActivities,
+      subBulletSections,
+      customNotes,
+      status,
+      `${templatesToInsert.length} atividade(s) adicionada(s) da sua lista mensal e salva(s) no relatório!`
+    );
+
+    setActivitySuccessPopup({
+      message: 'Atividade cadastrada com sucesso!',
+      detail:
+        templatesToInsert.length === 1
+          ? templatesToInsert[0].description
+          : `${templatesToInsert.length} atividades recorrentes lançadas no relatório`,
+      subDetail: `Setor: ${getSectorName(activeDeptKey)} • ${currentReport.monthName}/${currentReport.year}`,
+    });
   };
 
   const handleImportItems = async (
@@ -831,7 +1087,7 @@ export const UserPortal: React.FC<Props> = ({
       {/* ========================================================================= */}
       {!isReadOnly && (
         <div className="bg-white rounded-xl shadow-xs border-2 border-blue-100 p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold">
                 <Plus className="w-5 h-5" />
@@ -841,18 +1097,33 @@ export const UserPortal: React.FC<Props> = ({
                   Adicionar Novo Item ao Setor
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Escolha o tipo de item (Tópico de atividade ou Valor/Quantidade) e selecione a data no calendário
+                  Escolha o tipo de item (Tópico de atividade ou Valor/Quantidade) ou selecione da sua lista de atividades mensais
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsAddItemOpen(!isAddItemOpen)}
-              className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 cursor-pointer"
-            >
-              {isAddItemOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setUserTemplates(sqlDb.getUserActivityTemplates(currentUser.id));
+                  setIsTemplatesModalOpen(true);
+                }}
+                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+                title="Abrir ou cadastrar sua lista de atividades recorrentes mensais"
+              >
+                <ListChecks className="w-4 h-4 text-indigo-600" />
+                <span>Minha Lista de Atividades ({userTemplates.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsAddItemOpen(!isAddItemOpen)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 cursor-pointer"
+              >
+                {isAddItemOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
         {isAddItemOpen && (
@@ -1028,6 +1299,20 @@ export const UserPortal: React.FC<Props> = ({
                   </button>
                 </div>
               </div>
+
+              {/* Save to personal recurring activities list option */}
+              <div className="pt-2 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <label className="flex items-center gap-2 text-xs font-semibold text-indigo-900 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={saveAsRecurringTemplate}
+                    onChange={(e) => setSaveAsRecurringTemplate(e.target.checked)}
+                    className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <BookmarkPlus className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                  <span>Salvar também na minha lista de atividades mensais (para selecionar nos próximos meses)</span>
+                </label>
+              </div>
             </div>
           </div>
         )}
@@ -1147,14 +1432,25 @@ export const UserPortal: React.FC<Props> = ({
                   />
 
                   {!isReadOnly ? (
-                    <button
-                      type="button"
-                      aria-label={`Remover atividade ${idx + 1}`}
-                      onClick={() => handleRemoveBullet(idx)}
-                      className="self-end sm:self-center p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1 self-end sm:self-center">
+                      <button
+                        type="button"
+                        title="Salvar na minha lista de atividades mensais"
+                        aria-label={`Salvar atividade ${idx + 1} na lista mensal`}
+                        onClick={() => handleSaveExistingTopicAsTemplate(act)}
+                        className="p-1 text-gray-400 hover:text-indigo-600 rounded transition-colors cursor-pointer"
+                      >
+                        <BookmarkPlus className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Remover atividade ${idx + 1}`}
+                        onClick={() => handleRemoveBullet(idx)}
+                        className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   ) : (
                     <span title="Modo somente leitura" className="self-end sm:self-center p-1">
                       <Lock className="w-3.5 h-3.5 text-gray-300" />
@@ -1320,14 +1616,24 @@ export const UserPortal: React.FC<Props> = ({
 
                     <td className="p-2 text-center">
                       {!isReadOnly ? (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveMetric(m.id)}
-                          title="Remover indicador"
-                          className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleSaveExistingMetricAsTemplate(m)}
+                            title="Salvar na minha lista de atividades mensais"
+                            className="p-1 text-gray-400 hover:text-indigo-600 rounded transition-colors cursor-pointer"
+                          >
+                            <BookmarkPlus className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveMetric(m.id)}
+                            title="Remover indicador"
+                            className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       ) : (
                         <span title="Modo leitura: remoção bloqueada">
                           <Lock className="w-3.5 h-3.5 text-gray-300 mx-auto" />
@@ -1602,6 +1908,436 @@ export const UserPortal: React.FC<Props> = ({
         currentMetrics={metrics}
         onImport={handleImportItems}
       />
+
+      {/* Modal: Minha Lista de Atividades Mensais (Cadastro e Seleção por Usuário) */}
+      {isTemplatesModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-gray-200 animate-in fade-in zoom-in-95 overflow-hidden">
+            {/* Header */}
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-indigo-50/60">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
+                  <ListChecks className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-bold text-gray-900">
+                    Minha Lista de Atividades Mensais
+                  </h3>
+                  <p className="text-xs text-gray-600">
+                    Usuário: <strong>{currentUser.name}</strong> • Cadastre suas atividades padrão e selecione para lançar rapidamente em qualquer mês
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTemplatesModalOpen(false)}
+                className="text-gray-400 hover:text-gray-700 p-1.5 rounded-lg hover:bg-white cursor-pointer"
+                aria-label="Fechar lista de atividades"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 overflow-y-auto space-y-5 flex-1">
+              {/* Form to register a new recurring activity into user's list */}
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                    <BookmarkPlus className="w-4 h-4 text-indigo-600" />
+                    Cadastrar Nova Atividade na Minha Lista
+                  </span>
+                  <div className="inline-flex rounded-lg border border-gray-200 bg-white p-0.5 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setNewTplType('topic')}
+                      className={`px-2.5 py-1 rounded-md font-bold cursor-pointer transition-colors ${
+                        newTplType === 'topic' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Tópico / Atividade
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewTplType('metric')}
+                      className={`px-2.5 py-1 rounded-md font-bold cursor-pointer transition-colors ${
+                        newTplType === 'metric' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Valor / Quantidade
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                  <div className={newTplType === 'topic' ? 'sm:col-span-9' : 'sm:col-span-5'}>
+                    <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                      {newTplType === 'topic' ? 'Descrição da Atividade Mensal' : 'Nome do Indicador Mensal'}
+                    </label>
+                    <input
+                      type="text"
+                      value={newTplDesc}
+                      onChange={(e) => setNewTplDesc(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleCreateTemplate()}
+                      placeholder={
+                        newTplType === 'topic'
+                          ? 'Ex: Conferência mensal de folha de pagamento e encargos'
+                          : 'Ex: Atendimentos individuais realizados'
+                      }
+                      className="w-full px-3 py-2 text-xs border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  {newTplType === 'metric' && (
+                    <>
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                          Valor Padrão
+                        </label>
+                        <input
+                          type="text"
+                          value={newTplValue}
+                          onChange={(e) => setNewTplValue(e.target.value)}
+                          placeholder="0"
+                          className="w-full px-2.5 py-2 text-xs font-bold border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] font-bold text-gray-700 mb-1">
+                          Unidade
+                        </label>
+                        <select
+                          value={newTplUnit}
+                          onChange={(e) => setNewTplUnit(e.target.value as any)}
+                          className="w-full px-2 py-2 text-xs font-semibold border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+                        >
+                          <option value="numeric">Número</option>
+                          <option value="currency">R$ Moeda</option>
+                          <option value="percent">% Taxa</option>
+                        </select>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="sm:col-span-3">
+                    <button
+                      type="button"
+                      onClick={handleCreateTemplate}
+                      className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer shadow-xs transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Salvar na Lista
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Filter, Selection Toolbar & Optional Date */}
+              {(() => {
+                const filteredTemplates = userTemplates.filter((tpl) => {
+                  const matchesType = templateTypeFilter === 'all' || tpl.type === templateTypeFilter;
+                  const q = templateSearch.trim().toLowerCase();
+                  const matchesSearch = !q || tpl.description.toLowerCase().includes(q);
+                  return matchesType && matchesSearch;
+                });
+
+                const allFilteredSelected =
+                  filteredTemplates.length > 0 &&
+                  filteredTemplates.every((tpl) => selectedTemplateIds.includes(tpl.id));
+
+                return (
+                  <div className="space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      <div className="relative flex-1">
+                        <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          value={templateSearch}
+                          onChange={(e) => setTemplateSearch(e.target.value)}
+                          placeholder="Buscar atividade na sua lista..."
+                          className="w-full pl-9 pr-3 py-2 text-xs border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        {(['all', 'topic', 'metric'] as const).map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setTemplateTypeFilter(t)}
+                            className={`px-2.5 py-1.5 rounded-lg font-bold border cursor-pointer transition-colors ${
+                              templateTypeFilter === t
+                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                            }`}
+                          >
+                            {t === 'all' ? `Todas (${userTemplates.length})` : t === 'topic' ? 'Tópicos' : 'Indicadores'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 bg-blue-50/60 border border-blue-100 rounded-xl px-3.5 py-2.5 text-xs">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          disabled={filteredTemplates.length === 0}
+                          onClick={() => {
+                            if (allFilteredSelected) {
+                              const filteredIds = new Set(filteredTemplates.map((t) => t.id));
+                              setSelectedTemplateIds((prev) => prev.filter((id) => !filteredIds.has(id)));
+                            } else {
+                              setSelectedTemplateIds((prev) =>
+                                Array.from(new Set([...prev, ...filteredTemplates.map((t) => t.id)]))
+                              );
+                            }
+                          }}
+                          className="font-bold text-blue-700 hover:text-blue-900 hover:underline cursor-pointer disabled:opacity-40"
+                        >
+                          {allFilteredSelected ? 'Desmarcar Visíveis' : 'Selecionar Todas'}
+                        </button>
+                        {selectedTemplateIds.length > 0 && (
+                          <span className="text-indigo-800 font-bold">
+                            {selectedTemplateIds.length} selecionada(s)
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={useTemplateInsertDate}
+                            onChange={(e) => setUseTemplateInsertDate(e.target.checked)}
+                            className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300 cursor-pointer"
+                          />
+                          <span>Vincular data ao lançar:</span>
+                        </label>
+                        {useTemplateInsertDate && (
+                          <input
+                            type="date"
+                            value={templateInsertDate}
+                            onChange={(e) => setTemplateInsertDate(e.target.value)}
+                            className="px-2 py-1 text-xs border border-gray-300 rounded-md bg-white font-mono"
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Templates list */}
+                    {filteredTemplates.length === 0 ? (
+                      <div className="p-8 rounded-xl border border-dashed border-gray-300 bg-gray-50 text-center space-y-1.5">
+                        <ListChecks className="w-8 h-8 text-gray-400 mx-auto" />
+                        <p className="text-xs font-bold text-gray-700">
+                          {userTemplates.length === 0
+                            ? 'Sua lista de atividades mensais ainda está vazia.'
+                            : 'Nenhuma atividade encontrada para este filtro.'}
+                        </p>
+                        <p className="text-[11px] text-gray-500">
+                          Cadastre acima as atividades que você realiza todos os meses para selecioná-las rapidamente nos relatórios futuros.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                        {filteredTemplates.map((tpl) => {
+                          const isChecked = selectedTemplateIds.includes(tpl.id);
+                          const isEditing = editingTemplateId === tpl.id;
+                          return (
+                            <div
+                              key={tpl.id}
+                              className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl border transition-colors ${
+                                isChecked
+                                  ? 'border-indigo-400 bg-indigo-50/60'
+                                  : 'border-gray-200 bg-white hover:border-gray-300'
+                              }`}
+                            >
+                              <div className="flex items-start sm:items-center gap-2.5 flex-1 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() =>
+                                    setSelectedTemplateIds((prev) =>
+                                      prev.includes(tpl.id)
+                                        ? prev.filter((id) => id !== tpl.id)
+                                        : [...prev, tpl.id]
+                                    )
+                                  }
+                                  className="mt-0.5 sm:mt-0 w-4 h-4 text-indigo-600 rounded border-gray-300 cursor-pointer shrink-0"
+                                />
+
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0 ${
+                                    tpl.type === 'topic'
+                                      ? 'bg-blue-100 text-blue-800'
+                                      : 'bg-emerald-100 text-emerald-800'
+                                  }`}
+                                >
+                                  {tpl.type === 'topic' ? 'Tópico' : 'Indicador'}
+                                </span>
+
+                                {isEditing ? (
+                                  <div className="flex flex-1 flex-wrap items-center gap-2">
+                                    <input
+                                      type="text"
+                                      value={editingTemplateDesc}
+                                      onChange={(e) => setEditingTemplateDesc(e.target.value)}
+                                      className="flex-1 min-w-[180px] px-2.5 py-1 text-xs border border-indigo-300 rounded-md bg-white"
+                                    />
+                                    {tpl.type === 'metric' && (
+                                      <input
+                                        type="text"
+                                        value={editingTemplateVal}
+                                        onChange={(e) => setEditingTemplateVal(e.target.value)}
+                                        placeholder="Valor padrão"
+                                        className="w-24 px-2 py-1 text-xs border border-indigo-300 rounded-md bg-white"
+                                      />
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveTemplateEdit(tpl.id)}
+                                      className="px-2.5 py-1 bg-indigo-600 text-white text-[11px] font-bold rounded-md cursor-pointer"
+                                    >
+                                      Salvar
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingTemplateId(null)}
+                                      className="px-2 py-1 text-gray-500 text-[11px] font-semibold cursor-pointer"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-semibold text-gray-900 break-words">
+                                      {tpl.description}
+                                    </p>
+                                    {tpl.type === 'metric' && (
+                                      <p className="text-[11px] text-gray-500">
+                                        Valor padrão: <strong>{tpl.defaultValue || '0'}</strong>
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+
+                              {!isEditing && (
+                                <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleInsertTemplatesToMonth([tpl])}
+                                    className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
+                                    title={`Lançar diretamente em ${currentReport.monthName}/${currentReport.year}`}
+                                  >
+                                    + Lançar no Mês
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingTemplateId(tpl.id);
+                                      setEditingTemplateDesc(tpl.description);
+                                      setEditingTemplateVal(String(tpl.defaultValue ?? ''));
+                                    }}
+                                    className="p-1.5 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 cursor-pointer"
+                                    title="Editar item da lista"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteTemplate(tpl.id)}
+                                    className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 cursor-pointer"
+                                    title="Remover da minha lista"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3.5 border-t border-gray-100 bg-gray-50 flex flex-wrap items-center justify-between gap-3">
+              <span className="text-[11px] text-gray-500">
+                Destino: <strong>{getSectorName(activeDeptKey)}</strong> ({currentReport.monthName}/{currentReport.year})
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsTemplatesModalOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-200 rounded-xl cursor-pointer"
+                >
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  disabled={selectedTemplateIds.length === 0}
+                  onClick={() => {
+                    const chosen = userTemplates.filter((t) => selectedTemplateIds.includes(t.id));
+                    handleInsertTemplatesToMonth(chosen);
+                  }}
+                  className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-xl shadow-xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  Adicionar Selecionadas ao Mês ({selectedTemplateIds.length})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Popup / Caixa de Mensagem de Confirmação ao Cadastrar Atividade */}
+      {activitySuccessPopup && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="activity-success-title"
+          onClick={() => setActivitySuccessPopup(null)}
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-emerald-200 text-center space-y-4 animate-in fade-in zoom-in-95"
+          >
+            <div className="w-14 h-14 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 id="activity-success-title" className="text-lg font-black text-gray-900">
+                {activitySuccessPopup.message}
+              </h3>
+              {activitySuccessPopup.detail && (
+                <p className="text-xs sm:text-sm font-semibold text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-xl px-3.5 py-2.5 break-words">
+                  {activitySuccessPopup.detail}
+                </p>
+              )}
+              {activitySuccessPopup.subDetail && (
+                <p className="text-xs text-gray-500 pt-1">
+                  {activitySuccessPopup.subDetail}
+                </p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              autoFocus
+              onClick={() => setActivitySuccessPopup(null)}
+              className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs cursor-pointer transition-colors"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -5,9 +5,11 @@
  */
 import {
   AuditLog,
+  DepartmentReportData,
   ExportSchedule,
   MonthlyReport,
   User,
+  UserActivityTemplate,
   HiringDashboardConfig,
   UserPermissions,
   InstitutionSettings,
@@ -17,7 +19,7 @@ import {
 import { INITIAL_MONTHLY_REPORT, INITIAL_USERS } from '../data/initialData';
 import { getDefaultPermissionsForUser } from '../utils/permissions';
 import { calculateAuditHash } from './crypto';
-import { getSectorDescription, saveSectorDescription, getSectorName, getAllSectors, addCustomSector, updateSectorDetails, deleteCustomSector, ensureCustomSectorExists, SectorItem } from '../constants/sectors';
+import { OFFICIAL_SECTORS, getSectorDescription, saveSectorDescription, getSectorName, getAllSectors, addCustomSector, updateSectorDetails, deleteCustomSector, ensureCustomSectorExists, SectorItem } from '../constants/sectors';
 
 const DB_STORAGE_KEY = 'CAMP_SQLITE_DB_SNAPSHOT_V1';
 const AUDIT_LOGS_STORAGE_KEY = 'CAMP_AUDIT_LOGS_CHAIN_V1';
@@ -26,6 +28,7 @@ const MONTHLY_REPORTS_STORAGE_KEY = 'CAMP_MONTHLY_REPORTS_V1';
 const USERS_STORAGE_KEY = 'CAMP_USERS_V1';
 const BRANDING_SETTINGS_STORAGE_KEY = 'CAMP_BRANDING_SETTINGS_V1';
 const NOTIFICATIONS_STORAGE_KEY = 'CAMP_NOTIFICATION_CAMPAIGNS_V1';
+const USER_ACTIVITY_TEMPLATES_STORAGE_KEY = 'CAMP_USER_ACTIVITY_TEMPLATES_V1';
 
 function safeSetLocalStorage(key: string, value: string) {
   if (typeof localStorage === 'undefined') return;
@@ -142,6 +145,7 @@ class SqlDatabaseService {
   private auditLogs: AuditLog[] = [];
   private exportSchedules: ExportSchedule[] = [];
   private users: User[] = [];
+  private userActivityTemplates: Record<string, UserActivityTemplate[]> = {};
   private institutionSettings: InstitutionSettings = { ...DEFAULT_INSTITUTION_SETTINGS };
   private notificationCampaigns: NotificationCampaign[] = [...DEFAULT_NOTIFICATION_CAMPAIGNS];
   private lastHash: string = '0000000000000000000000000000000000000000000000000000000000000000';
@@ -278,17 +282,69 @@ class SqlDatabaseService {
     }
 
     // Ensure all registered departments exist in reports and have coordinator details & avatars populated
+    // For reports other than INITIAL_MONTHLY_REPORT ('2026-07'), NEVER inject July 2026 activities or metrics!
     let reportsUpdated = false;
     const initialDepts = INITIAL_MONTHLY_REPORT.departments as any;
     Object.values(this.memoryReports).forEach((rep) => {
-      if (rep.departments) {
-        // Sync any missing department from initialDepts
+      if (!rep.departments) {
+        rep.departments = {};
+        reportsUpdated = true;
+      }
+
+      if (rep.id === INITIAL_MONTHLY_REPORT.id) {
+        // Sync any missing department from initialDepts ONLY for the historical July 2026 report
         Object.keys(initialDepts).forEach((k) => {
           if (!rep.departments[k as keyof MonthlyReport['departments']]) {
             (rep.departments as any)[k] = initialDepts[k];
             reportsUpdated = true;
           }
         });
+      } else {
+        // Clean any untouched legacy cloned departments ('2026-07-31') from previous spread bug
+        let untouchedCount = 0;
+        let totalDepts = 0;
+        Object.entries(rep.departments).forEach(([deptKey, deptData]) => {
+          if (!deptData) return;
+          totalDepts++;
+          if (typeof deptData.lastModified === 'string' && deptData.lastModified.startsWith('2026-07-31')) {
+            (rep.departments as any)[deptKey] = this.buildEmptyDepartmentData(deptKey);
+            untouchedCount++;
+            reportsUpdated = true;
+          }
+        });
+
+        // If the entire report was an untouched July 2026 clone, also clear cloned hiring/financial numbers
+        if (totalDepts > 0 && untouchedCount === totalDepts) {
+          if (rep.hiringDashboard?.currentMonth?.aprendizesContratados === 630 || rep.hiringDashboard?.currentMonth?.aprendizesContratados === 629) {
+            rep.hiringDashboard = {
+              displayMode: rep.hiringDashboard.displayMode || '2_previous_and_current',
+              previousMonth2: { ...rep.hiringDashboard.previousMonth2, aprendizesContratados: 0, contratosEmProcesso: 0, estagiarios: 0 },
+              previousMonth1: { ...rep.hiringDashboard.previousMonth1, aprendizesContratados: 0, contratosEmProcesso: 0, estagiarios: 0 },
+              currentMonth: { ...rep.hiringDashboard.currentMonth, aprendizesContratados: 0, contratosEmProcesso: 0, estagiarios: 0 },
+            };
+          }
+          if (rep.financialHighlights?.faturamento === 1226808.14) {
+            rep.financialHighlights = {
+              faturamento: 0,
+              doacoes: 0,
+              despesasTotal: 0,
+              taxaAdm: 0,
+              estagio: 0,
+              budgetPrevisto: 0,
+              budgetRealizado: 0,
+              inadimplentesTexto: '',
+            };
+          }
+        }
+
+        // Ensure every registered sector has an empty department shell
+        getAllSectors().forEach((sec) => {
+          if (!rep.departments[sec.id as keyof MonthlyReport['departments']]) {
+            (rep.departments as any)[sec.id] = this.buildEmptyDepartmentData(sec.id);
+            reportsUpdated = true;
+          }
+        });
+      }
 
         // Ensure all departments have an official photo/avatar from INITIAL_MONTHLY_REPORT
         Object.entries(rep.departments).forEach(([deptKey, deptData]) => {
@@ -334,7 +390,6 @@ class SqlDatabaseService {
             reportsUpdated = true;
           }
         }
-      }
     });
     if (reportsUpdated) {
       this.persistReports();
@@ -392,6 +447,34 @@ class SqlDatabaseService {
       this.notificationCampaigns = [...DEFAULT_NOTIFICATION_CAMPAIGNS];
       safeSetLocalStorage(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(this.notificationCampaigns));
     }
+
+    // Load per-user recurring activity templates
+    const storedTemplates = localStorage.getItem(USER_ACTIVITY_TEMPLATES_STORAGE_KEY);
+    if (storedTemplates) {
+      try {
+        this.userActivityTemplates = JSON.parse(storedTemplates) || {};
+      } catch (e) {
+        this.userActivityTemplates = {};
+      }
+    } else {
+      this.userActivityTemplates = {};
+    }
+
+    // Merge any templates stored in user.permissions.activityTemplates
+    this.users.forEach((u) => {
+      const permTemplates = u.permissions?.activityTemplates;
+      if (Array.isArray(permTemplates) && permTemplates.length > 0) {
+        const current = this.userActivityTemplates[u.id] || [];
+        const existingIds = new Set(current.map((t) => t.id));
+        const merged = [...current];
+        permTemplates.forEach((pt) => {
+          if (pt && pt.id && !existingIds.has(pt.id)) {
+            merged.push(pt);
+          }
+        });
+        this.userActivityTemplates[u.id] = merged;
+      }
+    });
 
     this.initialized = true;
   }
@@ -499,66 +582,133 @@ class SqlDatabaseService {
     }
   }
 
+  private buildEmptyDepartmentData(departmentId: string, fallbackUser?: User): DepartmentReportData {
+    const allDeptsInit = INITIAL_MONTHLY_REPORT.departments as Record<string, DepartmentReportData | undefined>;
+    const initContact = allDeptsInit[departmentId];
+    const sectorInfo = getAllSectors().find((s) => s.id === departmentId) || OFFICIAL_SECTORS.find((s) => s.id === departmentId);
+
+    const matchedUser =
+      fallbackUser ||
+      this.users.find((u) => u.departmentId === departmentId) ||
+      (departmentId === 'pedagogico' ? this.users.find((u) => u.departmentId === 'ensino') : undefined) ||
+      (departmentId === 'psicologia' || departmentId === 'social'
+        ? this.users.find((u) => u.departmentId === 'psicologia_social')
+        : undefined) ||
+      (departmentId === 'coordenador_administrativo' || departmentId === 'admin'
+        ? this.users.find((u) => u.id === 'user_admin' || u.id === 'user_coord_admin')
+        : undefined);
+
+    return {
+      departmentId: departmentId as any,
+      coordinatorName: matchedUser?.name || initContact?.coordinatorName || 'Coordenação Setorial',
+      coordinatorTitle: matchedUser?.position || sectorInfo?.defaultPosition || initContact?.coordinatorTitle || getSectorName(departmentId),
+      coordinatorPhone: matchedUser?.phone || initContact?.coordinatorPhone || '(11) 2842-2470',
+      coordinatorEmail: matchedUser?.email || initContact?.coordinatorEmail || `${departmentId}@campsantoandre.org.br`,
+      coordinatorAvatar: matchedUser?.avatarUrl || initContact?.coordinatorAvatar || '',
+      status: 'rascunho',
+      lastModified: '',
+      modifiedBy: '',
+      metrics: [],
+      subMetrics: [],
+      bulletActivities: [],
+      activityItems: [],
+      subBulletSections: [],
+      customNotes: '',
+    };
+  }
+
+  private createEmptyMonthlyReport(reportId: string): MonthlyReport {
+    const [y, m] = reportId.split('-');
+    const monthNum = parseInt(m, 10) || 1;
+    const yearNum = parseInt(y, 10) || new Date().getFullYear();
+    const monthsPt = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+    let p1Month = monthNum - 1;
+    let p1Year = yearNum;
+    if (p1Month === 0) {
+      p1Month = 12;
+      p1Year -= 1;
+    }
+
+    let p2Month = p1Month - 1;
+    let p2Year = p1Year;
+    if (p2Month === 0) {
+      p2Month = 12;
+      p2Year -= 1;
+    }
+
+    const p1Label = `${monthsPt[p1Month]} ${p1Year}`;
+    const p2Label = `${monthsPt[p2Month]} ${p2Year}`;
+    const curLabel = `${monthsPt[monthNum]} ${yearNum}`;
+
+    const departments: Record<string, DepartmentReportData> = {};
+    const allDeptKeys = new Set<string>([
+      'geral',
+      'contratados',
+      'ensino',
+      'psicologia_social',
+      ...getAllSectors().map((s) => s.id),
+    ]);
+    allDeptKeys.forEach((deptKey) => {
+      departments[deptKey] = this.buildEmptyDepartmentData(deptKey);
+    });
+
+    return {
+      id: reportId,
+      month: monthNum,
+      year: yearNum,
+      monthName: monthsPt[monthNum] || 'Mês',
+      fullTitle: `${monthsPt[monthNum] || 'Mês'} de ${yearNum}`.toUpperCase(),
+      institution: INITIAL_MONTHLY_REPORT.institution,
+      address: INITIAL_MONTHLY_REPORT.address,
+      phone: INITIAL_MONTHLY_REPORT.phone,
+      website: INITIAL_MONTHLY_REPORT.website,
+      status: 'aberto',
+      departments,
+      hiringDashboard: {
+        displayMode: '2_previous_and_current',
+        previousMonth2: {
+          monthName: p2Label,
+          aprendizesContratados: 0,
+          contratosEmProcesso: 0,
+          estagiarios: 0,
+        },
+        previousMonth1: {
+          monthName: p1Label,
+          aprendizesContratados: 0,
+          contratosEmProcesso: 0,
+          estagiarios: 0,
+        },
+        currentMonth: {
+          monthName: curLabel,
+          aprendizesContratados: 0,
+          contratosEmProcesso: 0,
+          estagiarios: 0,
+        },
+      },
+      hiringHistory: {
+        maio: { aprendizes: 0, estagiarios: 0 },
+        junho: { aprendizes: 0, estagiarios: 0 },
+        julho: { aprendizes: 0, estagiarios: 0 },
+      },
+      financialHighlights: {
+        faturamento: 0,
+        doacoes: 0,
+        despesasTotal: 0,
+        taxaAdm: 0,
+        estagio: 0,
+        budgetPrevisto: 0,
+        budgetRealizado: 0,
+        inadimplentesTexto: '',
+      },
+    };
+  }
+
   public getReport(reportId: string = this.getActiveReportId()): MonthlyReport {
     this.init();
     if (!this.memoryReports[reportId]) {
-      // Create new clone if month doesn't exist
-      const [y, m] = reportId.split('-');
-      const monthNum = parseInt(m, 10);
-      const yearNum = parseInt(y, 10);
-      const monthsPt = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-      
-      // Calculate 1 month prior
-      let p1Month = monthNum - 1;
-      let p1Year = yearNum;
-      if (p1Month === 0) {
-        p1Month = 12;
-        p1Year -= 1;
-      }
-
-      // Calculate 2 months prior
-      let p2Month = p1Month - 1;
-      let p2Year = p1Year;
-      if (p2Month === 0) {
-        p2Month = 12;
-        p2Year -= 1;
-      }
-
-      const p1Label = `${monthsPt[p1Month]} ${p1Year}`;
-      const p2Label = `${monthsPt[p2Month]} ${p2Year}`;
-      const curLabel = `${monthsPt[monthNum]} ${yearNum}`;
-
-      const newRep: MonthlyReport = {
-        ...INITIAL_MONTHLY_REPORT,
-        id: reportId,
-        month: monthNum,
-        year: yearNum,
-        monthName: monthsPt[monthNum] || 'Mês',
-        fullTitle: `${monthsPt[monthNum] || 'Mês'} de ${yearNum}`.toUpperCase(),
-        status: 'aberto',
-        hiringDashboard: {
-          displayMode: '2_previous_and_current',
-          previousMonth2: {
-            monthName: p2Label,
-            aprendizesContratados: 660,
-            contratosEmProcesso: 35,
-            estagiarios: 50,
-          },
-          previousMonth1: {
-            monthName: p1Label,
-            aprendizesContratados: 645,
-            contratosEmProcesso: 40,
-            estagiarios: 55,
-          },
-          currentMonth: {
-            monthName: curLabel,
-            aprendizesContratados: 630,
-            contratosEmProcesso: 45,
-            estagiarios: 52,
-          },
-        },
-      };
-      this.memoryReports[reportId] = newRep;
+      // First time accessing this month: start completely empty with no previous month's activities/metrics
+      this.memoryReports[reportId] = this.createEmptyMonthlyReport(reportId);
       this.persistReports();
     }
     return this.memoryReports[reportId];
@@ -585,19 +735,7 @@ class SqlDatabaseService {
     let existingDept = report.departments[departmentId as keyof typeof report.departments];
 
     if (!existingDept) {
-      const fallback = (INITIAL_MONTHLY_REPORT.departments as any)[departmentId] || {
-        departmentId: departmentId as any,
-        coordinatorName: currentUser.name,
-        coordinatorTitle: currentUser.position,
-        coordinatorPhone: currentUser.phone,
-        coordinatorEmail: currentUser.email,
-        coordinatorAvatar: currentUser.avatarUrl || '',
-        status: 'rascunho',
-        lastModified: new Date().toISOString().replace('T', ' ').substring(0, 19),
-        modifiedBy: currentUser.name,
-        metrics: [],
-        bulletActivities: [],
-      };
+      const fallback = this.buildEmptyDepartmentData(departmentId, currentUser);
       (report.departments as any)[departmentId] = fallback;
       existingDept = (report.departments as any)[departmentId];
     }
@@ -764,20 +902,7 @@ class SqlDatabaseService {
       Object.values(this.memoryReports).forEach((rep) => {
         if (rep.departments) {
           if (!rep.departments[deptKey]) {
-            const fallback = (INITIAL_MONTHLY_REPORT.departments as any)[deptKey] || {
-              departmentId: deptKey,
-              coordinatorName: updatedUser.name,
-              coordinatorTitle: updatedUser.position,
-              coordinatorPhone: updatedUser.phone,
-              coordinatorEmail: updatedUser.email,
-              coordinatorAvatar: updatedUser.avatarUrl || '',
-              status: 'rascunho',
-              lastModified: new Date().toISOString().replace('T', ' ').substring(0, 19),
-              modifiedBy: updatedUser.name,
-              metrics: [],
-              bulletActivities: [],
-            };
-            (rep.departments as any)[deptKey] = fallback;
+            (rep.departments as any)[deptKey] = this.buildEmptyDepartmentData(deptKey, updatedUser);
           }
           rep.departments[deptKey] = {
             ...rep.departments[deptKey],
@@ -1751,6 +1876,130 @@ class SqlDatabaseService {
     import('./supabaseClient').then(({ supabaseService }) => {
       supabaseService.deleteDepartmentRow(id).catch(() => {});
     }).catch(() => {});
+  }
+
+  // =========================================================================
+  // PER-USER RECURRING ACTIVITY TEMPLATES (LISTA DE ATIVIDADES MENSAIS)
+  // =========================================================================
+
+  private persistUserActivityTemplates(userId?: string) {
+    safeSetLocalStorage(USER_ACTIVITY_TEMPLATES_STORAGE_KEY, JSON.stringify(this.userActivityTemplates));
+    if (userId) {
+      const idx = this.users.findIndex((u) => u.id === userId);
+      if (idx >= 0) {
+        const userObj = this.users[idx];
+        userObj.permissions = {
+          ...(userObj.permissions || {}),
+          activityTemplates: [...(this.userActivityTemplates[userId] || [])],
+        };
+        this.persistUsers();
+        import('./supabaseClient')
+          .then(({ supabaseService }) => {
+            supabaseService.syncUser(userObj).catch(() => {});
+          })
+          .catch(() => {});
+      }
+    }
+  }
+
+  public getUserActivityTemplates(userId: string): UserActivityTemplate[] {
+    this.init();
+    return [...(this.userActivityTemplates[userId] || [])];
+  }
+
+  public mergeRemoteActivityTemplates(userId: string, remoteTemplates?: UserActivityTemplate[]) {
+    this.init();
+    if (!Array.isArray(remoteTemplates) || remoteTemplates.length === 0) return;
+    const existing = this.userActivityTemplates[userId] || [];
+    const existingIds = new Set(existing.map((t) => t.id));
+    const merged = [...existing];
+    let changed = false;
+    remoteTemplates.forEach((rt) => {
+      if (rt && rt.id && !existingIds.has(rt.id)) {
+        merged.push(rt);
+        changed = true;
+      }
+    });
+    if (changed) {
+      this.userActivityTemplates[userId] = merged;
+      safeSetLocalStorage(USER_ACTIVITY_TEMPLATES_STORAGE_KEY, JSON.stringify(this.userActivityTemplates));
+    }
+  }
+
+  public async addUserActivityTemplate(
+    userId: string,
+    template: Omit<UserActivityTemplate, 'id' | 'userId' | 'createdAt'>,
+    actorUser?: User
+  ): Promise<UserActivityTemplate> {
+    this.init();
+    const list = this.userActivityTemplates[userId] || [];
+    const cleanDesc = template.description.trim();
+
+    // Avoid exact duplicate of same type and description
+    const duplicate = list.find(
+      (item) =>
+        item.type === template.type &&
+        item.description.trim().toLowerCase() === cleanDesc.toLowerCase()
+    );
+    if (duplicate) {
+      return duplicate;
+    }
+
+    const newTemplate: UserActivityTemplate = {
+      ...template,
+      description: cleanDesc,
+      id: `tpl_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      userId,
+      createdAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+    };
+
+    this.userActivityTemplates[userId] = [newTemplate, ...list];
+    this.persistUserActivityTemplates(userId);
+
+    const userForLog = actorUser || this.users.find((u) => u.id === userId);
+    if (userForLog) {
+      await this.addAuditLog({
+        userId: userForLog.id,
+        userName: userForLog.name,
+        departmentId: template.departmentId || userForLog.departmentId,
+        action: 'ACTIVITY_TEMPLATE_UPDATE',
+        details: `Atividade padrão adicionada à lista pessoal de ${userForLog.name}: "${cleanDesc}"`,
+        newValue: template.type === 'metric' ? `Indicador (${template.unitType || 'numeric'})` : 'Tópico',
+        ipAddress: '192.168.1.100',
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'CAMP Web Client',
+      });
+    }
+
+    return newTemplate;
+  }
+
+  public async updateUserActivityTemplate(
+    userId: string,
+    templateId: string,
+    updates: Partial<UserActivityTemplate>
+  ): Promise<UserActivityTemplate> {
+    this.init();
+    const list = this.userActivityTemplates[userId] || [];
+    const idx = list.findIndex((t) => t.id === templateId);
+    if (idx < 0) {
+      throw new Error('Atividade padrão não encontrada.');
+    }
+    const updated: UserActivityTemplate = {
+      ...list[idx],
+      ...updates,
+      description: updates.description !== undefined ? updates.description.trim() : list[idx].description,
+    };
+    list[idx] = updated;
+    this.userActivityTemplates[userId] = [...list];
+    this.persistUserActivityTemplates(userId);
+    return updated;
+  }
+
+  public async deleteUserActivityTemplate(userId: string, templateId: string): Promise<void> {
+    this.init();
+    const list = this.userActivityTemplates[userId] || [];
+    this.userActivityTemplates[userId] = list.filter((t) => t.id !== templateId);
+    this.persistUserActivityTemplates(userId);
   }
 }
 

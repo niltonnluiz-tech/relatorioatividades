@@ -1029,6 +1029,9 @@ class SupabaseService {
             || ru.email === 'niltonnluiz@gmail.com';
 
           if (existing) {
+            if (ru.permissions?.activityTemplates) {
+              sqlDb.mergeRemoteActivityTemplates(existing.id, ru.permissions.activityTemplates);
+            }
             sqlDb.updateUser({
               ...existing,
               name: isUserAdmin ? 'Nilton Luiz' : (ru.name || existing.name),
@@ -1040,8 +1043,15 @@ class SupabaseService {
               departmentName: isUserAdmin ? 'Coordenador Administrativo' : (ru.department_name || existing.departmentName),
               avatarUrl: ru.avatar_url || existing.avatarUrl,
               active: ru.active !== false,
+              permissions: {
+                ...(existing.permissions || {}),
+                activityTemplates: sqlDb.getUserActivityTemplates(existing.id),
+              },
             });
           } else {
+            if (ru.permissions?.activityTemplates) {
+              sqlDb.mergeRemoteActivityTemplates(ru.id, ru.permissions.activityTemplates);
+            }
             sqlDb.addUser({
               id: ru.id,
               name: isUserAdmin ? 'Nilton Luiz' : ru.name,

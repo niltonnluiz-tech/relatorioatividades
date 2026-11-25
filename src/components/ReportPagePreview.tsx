@@ -700,6 +700,11 @@ export const ReportPagePreview: React.FC<Props> = ({
   // PAGE: GESTÃO DE PESSOAS | RH
   const renderRh = () => {
     const rh = report.departments.rh;
+    if (!rh) return renderDepartmentPage('rh', 'Gestão de Pessoas | RH');
+    const hasMetrics = rh.metrics && rh.metrics.length > 0;
+    const hasSubMetrics = (rh.subMetrics?.[0]?.items || []).length > 0;
+    const hasBullets = rh.bulletActivities && rh.bulletActivities.length > 0;
+
     return (
       <div>
         {renderHeader('Gestão de Pessoas | RH', getSectorDescription('rh'))}
@@ -712,77 +717,87 @@ export const ReportPagePreview: React.FC<Props> = ({
         )}
 
         {/* Tópicos & Atividades Realizadas no Início */}
-        {rh.bulletActivities && rh.bulletActivities.length > 0 && (
+        {hasBullets && (
           <div className="mb-6">
             <h3 className="text-base sm:text-lg font-bold text-[#0B0F19] mb-3 flex items-center gap-2">
               <span>Atividades & Ações Realizadas</span>
               <span className="bg-blue-100 text-blue-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                {rh.bulletActivities.length}
+                {rh.bulletActivities!.length}
               </span>
             </h3>
             <div className="space-y-2.5 pl-2">
-              {rh.bulletActivities.map((act, idx) => renderBulletActivity(act, idx))}
+              {rh.bulletActivities!.map((act, idx) => renderBulletActivity(act, idx))}
             </div>
           </div>
         )}
 
             {/* Table 1: Indicador / Quantidade */}
-            <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
-              <table className="w-full text-xs md:text-sm min-w-[280px]">
-                <thead>
-                  <tr className="bg-[#0B0F19] text-white">
-                    <th className="p-2.5 text-left font-bold">Indicador</th>
-                    <th className="p-2.5 text-center font-bold w-28">Quantidade</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {rh.metrics.map((m) => (
-                    <tr key={m.id} className="hover:bg-gray-50">
-                      <td className="p-2 font-medium text-gray-900">{m.label}</td>
-                      <td className="p-2 text-center font-bold text-gray-800">{m.value}</td>
+            {hasMetrics && (
+              <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
+                <table className="w-full text-xs md:text-sm min-w-[280px]">
+                  <thead>
+                    <tr className="bg-[#0B0F19] text-white">
+                      <th className="p-2.5 text-left font-bold">Indicador</th>
+                      <th className="p-2.5 text-center font-bold w-28">Quantidade</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Table 2: Despesas */}
-            <div className="border border-gray-300 rounded-lg overflow-x-auto">
-              <div className="bg-[#0B0F19] text-white px-3 py-1.5 flex items-center justify-between text-xs font-semibold">
-                <span>Despesas (Colaboradores e Aprendizes)</span>
-                <span className="bg-emerald-600/40 text-emerald-200 text-[10px] px-2 py-0.5 rounded flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Criptografado E2EE
-                </span>
-              </div>
-              <table className="w-full text-xs md:text-sm">
-                <thead>
-                  <tr className="bg-gray-100 text-gray-800 border-b border-gray-300">
-                    <th className="p-2.5 text-left font-bold">Despesas</th>
-                    <th className="p-2.5 text-right font-bold w-44">Valor R$</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {(rh.subMetrics?.[0]?.items || []).map((m) => {
-                    const hasFinancePerm = canUserViewFinancials(currentUser);
-                    return (
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {rh.metrics.map((m) => (
                       <tr key={m.id} className="hover:bg-gray-50">
                         <td className="p-2 font-medium text-gray-900">{m.label}</td>
-                        <td className="p-2 text-right font-mono font-bold text-gray-900">
-                          {hasFinancePerm ? (
-                            m.value
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-gray-500 font-sans text-xs bg-gray-100 px-2 py-0.5 rounded">
-                              <Lock className="w-3 h-3 text-amber-600" />
-                              <span>•••••• (Sigilo)</span>
-                            </span>
-                          )}
-                        </td>
+                        <td className="p-2 text-center font-bold text-gray-800">{m.value}</td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Table 2: Despesas */}
+            {hasSubMetrics && (
+              <div className="border border-gray-300 rounded-lg overflow-x-auto">
+                <div className="bg-[#0B0F19] text-white px-3 py-1.5 flex items-center justify-between text-xs font-semibold">
+                  <span>Despesas (Colaboradores e Aprendizes)</span>
+                  <span className="bg-emerald-600/40 text-emerald-200 text-[10px] px-2 py-0.5 rounded flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Criptografado E2EE
+                  </span>
+                </div>
+                <table className="w-full text-xs md:text-sm">
+                  <thead>
+                    <tr className="bg-gray-100 text-gray-800 border-b border-gray-300">
+                      <th className="p-2.5 text-left font-bold">Despesas</th>
+                      <th className="p-2.5 text-right font-bold w-44">Valor R$</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {(rh.subMetrics?.[0]?.items || []).map((m) => {
+                      const hasFinancePerm = canUserViewFinancials(currentUser);
+                      return (
+                        <tr key={m.id} className="hover:bg-gray-50">
+                          <td className="p-2 font-medium text-gray-900">{m.label}</td>
+                          <td className="p-2 text-right font-mono font-bold text-gray-900">
+                            {hasFinancePerm ? (
+                              m.value
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-gray-500 font-sans text-xs bg-gray-100 px-2 py-0.5 rounded">
+                                <Lock className="w-3 h-3 text-amber-600" />
+                                <span>•••••• (Sigilo)</span>
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {!hasBullets && !hasMetrics && !hasSubMetrics && (
+              <div className="p-6 bg-gray-50 border border-dashed border-gray-300 rounded-xl text-center text-gray-500 text-xs">
+                Nenhum lançamento registrado para este departamento neste mês.
+              </div>
+            )}
           </div>
         );
   };
@@ -790,7 +805,10 @@ export const ReportPagePreview: React.FC<Props> = ({
   // PAGE: FINANCEIRO
   const renderFinanceiro = () => {
     const fin = report.departments.financeiro;
+    if (!fin) return renderDepartmentPage('financeiro', 'Financeiro');
     const hasFinancialAccess = canUserViewFinancials(currentUser);
+    const hasMetrics = fin.metrics && fin.metrics.length > 0;
+    const hasBullets = fin.bulletActivities && fin.bulletActivities.length > 0;
 
     return (
       <div>
@@ -804,22 +822,22 @@ export const ReportPagePreview: React.FC<Props> = ({
         )}
 
         {/* Tópicos & Atividades Realizadas no Início */}
-        {fin.bulletActivities && fin.bulletActivities.length > 0 && (
+        {hasBullets && (
           <div className="mb-6">
             <h3 className="text-base sm:text-lg font-bold text-[#0B0F19] mb-3 flex items-center gap-2">
               <span>Atividades & Ações Realizadas</span>
               <span className="bg-blue-100 text-blue-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                {fin.bulletActivities.length}
+                {fin.bulletActivities!.length}
               </span>
             </h3>
             <div className="space-y-2.5 pl-2">
-              {fin.bulletActivities.map((act, idx) => renderBulletActivity(act, idx))}
+              {fin.bulletActivities!.map((act, idx) => renderBulletActivity(act, idx))}
             </div>
           </div>
         )}
 
             {/* Aviso de Sigilo Financeiro se usuário não tiver permissão */}
-            {!hasFinancialAccess && (
+            {!hasFinancialAccess && hasMetrics && (
               <div className="mb-5 bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start gap-3 shadow-xs">
                 <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div>
@@ -833,54 +851,64 @@ export const ReportPagePreview: React.FC<Props> = ({
               </div>
             )}
 
-            <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
-              <div className="bg-[#0B0F19] text-white px-3 py-1.5 flex items-center justify-between text-xs font-semibold min-w-[320px]">
-                <span className="flex items-center gap-1.5">
-                  Registros Financeiros Oficiais
-                  {!hasFinancialAccess && (
-                    <span className="bg-amber-500/30 text-amber-200 text-[10px] px-2 py-0.2 rounded font-normal">
-                      Acesso Restrito
-                    </span>
-                  )}
-                </span>
-                <span className="bg-emerald-600/40 text-emerald-200 text-[10px] px-2 py-0.5 rounded flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Criptografia AES-256-GCM
-                </span>
-              </div>
-              <table className="w-full text-xs md:text-sm">
-                <thead>
-                  <tr className="bg-gray-100 text-gray-800 border-b border-gray-300">
-                    <th className="p-3 text-left font-bold">Categoria</th>
-                    <th className="p-3 text-right font-bold w-52">Valor R$</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {fin.metrics.map((m) => (
-                    <tr key={m.id} className="hover:bg-gray-50">
-                      <td className="p-3 font-medium text-gray-900">{m.label}</td>
-                      <td className="p-3 text-right font-mono font-bold text-gray-900">
-                        {hasFinancialAccess ? (
-                          m.value
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 font-sans bg-gray-100 px-2.5 py-1 rounded-md">
-                            <Lock className="w-3.5 h-3.5 text-amber-600" />
-                            <span>•••••••• (Confidencial)</span>
-                          </span>
-                        )}
-                      </td>
+            {hasMetrics && (
+              <div className="border border-gray-300 rounded-lg overflow-x-auto mb-6">
+                <div className="bg-[#0B0F19] text-white px-3 py-1.5 flex items-center justify-between text-xs font-semibold min-w-[320px]">
+                  <span className="flex items-center gap-1.5">
+                    Registros Financeiros Oficiais
+                    {!hasFinancialAccess && (
+                      <span className="bg-amber-500/30 text-amber-200 text-[10px] px-2 py-0.2 rounded font-normal">
+                        Acesso Restrito
+                      </span>
+                    )}
+                  </span>
+                  <span className="bg-emerald-600/40 text-emerald-200 text-[10px] px-2 py-0.5 rounded flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> Criptografia AES-256-GCM
+                  </span>
+                </div>
+                <table className="w-full text-xs md:text-sm">
+                  <thead>
+                    <tr className="bg-gray-100 text-gray-800 border-b border-gray-300">
+                      <th className="p-3 text-left font-bold">Categoria</th>
+                      <th className="p-3 text-right font-bold w-52">Valor R$</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {fin.metrics.map((m) => (
+                      <tr key={m.id} className="hover:bg-gray-50">
+                        <td className="p-3 font-medium text-gray-900">{m.label}</td>
+                        <td className="p-3 text-right font-mono font-bold text-gray-900">
+                          {hasFinancialAccess ? (
+                            m.value
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-gray-500 font-sans bg-gray-100 px-2.5 py-1 rounded-md">
+                              <Lock className="w-3.5 h-3.5 text-amber-600" />
+                              <span>•••••••• (Confidencial)</span>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
-            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-              <p className="font-bold text-gray-900">
-                {hasFinancialAccess
-                  ? (fin.customNotes || 'Inadimplentes: sem ocorrências.')
-                  : 'Inadimplência e notas financeiras: Dados confidenciais reservados.'}
-              </p>
-            </div>
+            {fin.customNotes && (
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                <p className="font-bold text-gray-900">
+                  {hasFinancialAccess
+                    ? fin.customNotes
+                    : 'Inadimplência e notas financeiras: Dados confidenciais reservados.'}
+                </p>
+              </div>
+            )}
+
+            {!hasBullets && !hasMetrics && !fin.customNotes && (
+              <div className="p-6 bg-gray-50 border border-dashed border-gray-300 rounded-xl text-center text-gray-500 text-xs">
+                Nenhum lançamento registrado para este departamento neste mês.
+              </div>
+            )}
           </div>
         );
   };
@@ -888,6 +916,11 @@ export const ReportPagePreview: React.FC<Props> = ({
   // PAGE: GERÊNCIA DE PROJETOS
   const renderProjetos = () => {
     const proj = report.departments.projetos;
+    if (!proj) return renderDepartmentPage('projetos', 'Gerência de Projetos');
+    const hasBullets = proj.bulletActivities && proj.bulletActivities.length > 0;
+    const sec0 = proj.subBulletSections?.[0]?.items || [];
+    const sec1 = proj.subBulletSections?.[1]?.items || [];
+
     return (
       <div>
         {renderHeader('Gerência de Projetos', getSectorDescription('projetos'))}
@@ -900,41 +933,51 @@ export const ReportPagePreview: React.FC<Props> = ({
         )}
 
         {/* Tópicos & Atividades Realizadas no Início */}
-        {proj.bulletActivities && proj.bulletActivities.length > 0 && (
+        {hasBullets && (
           <div className="mb-6">
             <h3 className="text-base sm:text-lg font-bold text-[#0B0F19] mb-3 flex items-center gap-2">
               <span>Atividades & Ações Realizadas</span>
               <span className="bg-blue-100 text-blue-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                {proj.bulletActivities.length}
+                {proj.bulletActivities!.length}
               </span>
             </h3>
             <div className="space-y-2.5 pl-2">
-              {proj.bulletActivities.map((act, idx) => renderBulletActivity(act, idx))}
+              {proj.bulletActivities!.map((act, idx) => renderBulletActivity(act, idx))}
             </div>
           </div>
         )}
 
-        <div className="mt-6 space-y-6">
-          {/* Section 1 */}
-          <div>
-            <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
-              {proj.subBulletSections?.[0]?.title || 'Legislação / Certificações'}
-            </h3>
-            <div className="space-y-2 pl-2">
-              {(proj.subBulletSections?.[0]?.items || []).map((item, idx) => renderBulletActivity(item, idx))}
-            </div>
-          </div>
+        {(sec0.length > 0 || sec1.length > 0) && (
+          <div className="mt-6 space-y-6">
+            {sec0.length > 0 && (
+              <div>
+                <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
+                  {proj.subBulletSections?.[0]?.title || 'Legislação / Certificações'}
+                </h3>
+                <div className="space-y-2 pl-2">
+                  {sec0.map((item, idx) => renderBulletActivity(item, idx))}
+                </div>
+              </div>
+            )}
 
-          {/* Section 2 */}
-          <div>
-            <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
-              {proj.subBulletSections?.[1]?.title || 'Estágio'}
-            </h3>
-            <div className="space-y-2 pl-2">
-              {(proj.subBulletSections?.[1]?.items || []).map((item, idx) => renderBulletActivity(item, idx))}
-            </div>
+            {sec1.length > 0 && (
+              <div>
+                <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
+                  {proj.subBulletSections?.[1]?.title || 'Estágio'}
+                </h3>
+                <div className="space-y-2 pl-2">
+                  {sec1.map((item, idx) => renderBulletActivity(item, idx))}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {!hasBullets && sec0.length === 0 && sec1.length === 0 && (!proj.metrics || proj.metrics.length === 0) && (
+          <div className="p-6 bg-gray-50 border border-dashed border-gray-300 rounded-xl text-center text-gray-500 text-xs mt-4">
+            Nenhum lançamento registrado para este departamento neste mês.
+          </div>
+        )}
       </div>
     );
   };
@@ -942,6 +985,11 @@ export const ReportPagePreview: React.FC<Props> = ({
   // PAGE: PRESIDENTE
   const renderPresidencia = () => {
     const pres = report.departments.presidencia;
+    if (!pres) return renderDepartmentPage('presidencia', 'Presidente');
+    const hasBullets = pres.bulletActivities && pres.bulletActivities.length > 0;
+    const sec0 = pres.subBulletSections?.[0]?.items || [];
+    const sec1 = pres.subBulletSections?.[1]?.items || [];
+
     return (
       <div>
         {renderHeader('Presidente', getSectorDescription('presidencia'))}
@@ -954,48 +1002,59 @@ export const ReportPagePreview: React.FC<Props> = ({
         )}
 
         {/* Tópicos & Atividades Realizadas no Início */}
-        {pres.bulletActivities && pres.bulletActivities.length > 0 && (
+        {hasBullets && (
           <div className="mb-6">
             <h3 className="text-base sm:text-lg font-bold text-[#0B0F19] mb-3 flex items-center gap-2">
               <span>Atividades & Ações Realizadas</span>
               <span className="bg-blue-100 text-blue-900 text-[10px] font-bold px-2 py-0.5 rounded-full">
-                {pres.bulletActivities.length}
+                {pres.bulletActivities!.length}
               </span>
             </h3>
             <div className="space-y-2.5 pl-2">
-              {pres.bulletActivities.map((act, idx) => renderBulletActivity(act, idx))}
+              {pres.bulletActivities!.map((act, idx) => renderBulletActivity(act, idx))}
             </div>
           </div>
         )}
 
-        <div className="mt-6 space-y-6">
-          {/* Implantações realizadas */}
-          <div>
-            <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
-              {pres.subBulletSections?.[0]?.title || 'Implantações realizadas'}
-            </h3>
-            <div className="space-y-2.5 pl-2">
-              {(pres.subBulletSections?.[0]?.items || []).map((item, idx) => renderBulletActivity(item, idx))}
-            </div>
-          </div>
+        {(sec0.length > 0 || sec1.length > 0 || pres.customNotes) && (
+          <div className="mt-6 space-y-6">
+            {sec0.length > 0 && (
+              <div>
+                <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
+                  {pres.subBulletSections?.[0]?.title || 'Implantações realizadas'}
+                </h3>
+                <div className="space-y-2.5 pl-2">
+                  {sec0.map((item, idx) => renderBulletActivity(item, idx))}
+                </div>
+              </div>
+            )}
 
-          {/* Próximas implantações */}
-          <div>
-            <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
-              {pres.subBulletSections?.[1]?.title || 'Próximas implantações'}
-            </h3>
-            <div className="space-y-2.5 pl-2">
-              {(pres.subBulletSections?.[1]?.items || []).map((item, idx) => renderBulletActivity(item, idx))}
-            </div>
-          </div>
+            {sec1.length > 0 && (
+              <div>
+                <h3 className="text-lg font-bold text-[#0B0F19] mb-3">
+                  {pres.subBulletSections?.[1]?.title || 'Próximas implantações'}
+                </h3>
+                <div className="space-y-2.5 pl-2">
+                  {sec1.map((item, idx) => renderBulletActivity(item, idx))}
+                </div>
+              </div>
+            )}
 
-          {/* Slogan */}
-          <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center mt-6">
-            <p className="font-bold text-sm text-gray-900">
-              {pres.customNotes || 'Estamos captando novas doações e parcerias. Seja um doador você também.'}
-            </p>
+            {pres.customNotes && (
+              <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center mt-6">
+                <p className="font-bold text-sm text-gray-900">
+                  {pres.customNotes}
+                </p>
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {!hasBullets && sec0.length === 0 && sec1.length === 0 && !pres.customNotes && (!pres.metrics || pres.metrics.length === 0) && (
+          <div className="p-6 bg-gray-50 border border-dashed border-gray-300 rounded-xl text-center text-gray-500 text-xs mt-4">
+            Nenhum lançamento registrado para este departamento neste mês.
+          </div>
+        )}
       </div>
     );
   };
